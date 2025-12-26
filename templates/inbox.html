@@ -1,0 +1,47 @@
+<div class="content-header">
+    <h1>
+        <i class="fas fa-inbox"></i>
+        Inbox
+    </h1>
+    <p class="subtitle">Safe emails only - phishing threats automatically removed</p>
+</div>
+
+<div class="email-list">
+    {% if emails|length == 0 %}
+    <div class="empty-state">
+        <i class="fas fa-inbox"></i>
+        <h3>No emails in inbox</h3>
+        <p>Your inbox is empty. All phishing emails are automatically filtered out.</p>
+    </div>
+    {% else %}
+    {% for email in emails %}
+    <div class="email-card">
+        <div class="email-icon">
+            <i class="fas fa-envelope"></i>
+        </div>
+        <div class="email-content">
+            <div class="email-header">
+                <h3 class="email-sender">{{ email.sender }}</h3>
+                <span class="email-badge safe">
+                    <i class="fas fa-check-circle"></i>
+                    Safe {{ email.confidence }}%
+                </span>
+            </div>
+            <h4 class="email-subject">{{ email.subject }}</h4>
+            <p class="email-preview">{{ email.body }}</p>
+        </div>
+        <div class="email-actions">
+            <button class="icon-btn" title="Star">
+                <i class="far fa-star"></i>
+            </button>
+            <button class="icon-btn" title="Archive">
+                <i class="fas fa-archive"></i>
+            </button>
+            <button class="icon-btn" title="Delete">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
