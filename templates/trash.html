@@ -1,50 +1,36 @@
-<div class="content-header">
-    <h1>
-        <i class="fas fa-exclamation-triangle"></i>
-        Phishing Attack Logs
-    </h1>
-    <p class="subtitle">Detected and blocked malicious emails with AI explanations</p>
-</div>
-
 <div class="email-list">
     {% if emails|length == 0 %}
     <div class="empty-state">
-        <i class="fas fa-shield-alt"></i>
-        <h3>No threats detected</h3>
-        <p>Great! No phishing emails have been detected yet.</p>
+        <i class="fas fa-inbox"></i>
+        <h3>Trash is empty</h3>
+        <p>No emails are currently in the trash.</p>
     </div>
     {% else %}
     {% for email in emails %}
-    <div class="email-card phishing">
-        <div class="email-icon danger">
-            <i class="fas fa-exclamation-triangle"></i>
+    <div class="email-card">
+        <div class="email-icon">
+            <i class="fas fa-envelope-open-text"></i>
         </div>
+
         <div class="email-content">
             <div class="email-header">
                 <h3 class="email-sender">{{ email.sender }}</h3>
-                <span class="email-badge danger">
-                    <i class="fas fa-shield-alt"></i>
-                    Phishing {{ email.confidence }}%
+                <span class="email-badge muted">
+                    <i class="fas fa-trash"></i>
+                    Trashed
                 </span>
             </div>
+
             <h4 class="email-subject">{{ email.subject }}</h4>
-            <div class="phishing-info">
-                <p><strong>Reason:</strong> {{ email.reason }}</p>
-                <p><strong>Action:</strong> {{ email.action }}</p>
-                <p><strong>Date:</strong> {{ email.date }}</p>
-            </div>
-            
-            <!-- XAI Explanation Section -->
-            {% if email.explanation_html %}
-            {{ email.explanation_html | safe }}
-            {% endif %}
+            <p class="email-preview">{{ email.body }}</p>
         </div>
+
         <div class="email-actions">
-            <button class="icon-btn" title="View Details">
-                <i class="fas fa-eye"></i>
+            <button class="icon-btn" title="Restore (Coming Soon)">
+                <i class="fas fa-undo"></i>
             </button>
-            <button class="icon-btn" title="Report False Positive">
-                <i class="fas fa-flag"></i>
+            <button class="icon-btn danger" title="Delete Permanently (Coming Soon)">
+                <i class="fas fa-times"></i>
             </button>
         </div>
     </div>
