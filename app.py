@@ -4,6 +4,7 @@ Main Flask application with improved error handling and scalability.
 """
 
 from flask import Flask, session, redirect, request, render_template, jsonify
+from datetime import datetime
 from auth.google_oauth import get_flow
 from googleapiclient.errors import HttpError
 from google.oauth2.credentials import Credentials
@@ -377,7 +378,65 @@ def all_mail():
                 "flagged": flagged
             })
 
-        return render_template("all_mail.html", emails=emails)
+        # Check for next page token
+        next_page_token = results.get("nextPageToken")
+
+        return render_template("all_mail.html", emails=emails, next_page_token=next_page_token)
+
+    except Exception as e:
+        logger.error(e)
+        return handle_error(e, 500, False)
+
+
+@app.route("/api/all-mail")
+@require_auth
+def api_all_mail():
+    try:
+        service = get_gmail_service()
+        if not service:
+            return jsonify({"error": "Gmail unavailable"}), 500
+
+        page_token = request.args.get('pageToken')
+        
+        results = service.users().messages().list(
+            userId="me",
+            maxResults=50,
+            pageToken=page_token,
+            includeSpamTrash=True 
+        ).execute()
+
+        emails = []
+        for m in results.get("messages", []):
+            msg = service.users().messages().get(
+                userId="me",
+                id=m["id"],
+                format="metadata",
+                metadataHeaders=["From", "Subject"]
+            ).execute()
+
+            headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+            
+            label_ids = msg.get("labelIds", [])
+            starred = "STARRED" in label_ids
+            flagged = "IMPORTANT" in label_ids
+            
+            emails.append({
+                "id": m["id"],
+                "sender": headers.get("From", ""),
+                "subject": headers.get("Subject", ""),
+                "body": msg.get("snippet", ""),
+                "starred": starred,
+                "flagged": flagged
+            })
+            
+        return jsonify({
+            "emails": emails,
+            "nextPageToken": results.get("nextPageToken")
+        })
+
+    except Exception as e:
+        logger.error(e)
+        return jsonify({"error": str(e)}), 500
 
     except Exception as e:
         logger.error(e)
@@ -479,7 +538,7 @@ def trash():
                 "reason": reason,
                 "action": action,
                 "explanation_html": explanation_html,
-                "date": msg.get("internalDate", "")
+                "date": datetime.fromtimestamp(int(msg.get("internalDate", 0))/1000).strftime('%Y-%m-%d %H:%M') if msg.get("internalDate") else ""
             })
 
         return render_template("trash.html", emails=emails)
@@ -502,7 +561,7 @@ def phishing_logs():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT sender, subject, body, phishing, confidence, reason, action, explanation, created_at
+                SELECT sender, subject, body, phishing, confidence, reason, action, explanation, created_at, message_id
                 FROM email_logs 
                 WHERE phishing = 1 
                 ORDER BY created_at DESC 
@@ -528,7 +587,8 @@ def phishing_logs():
                     "reason": row[5] or "Phishing detected",
                     "action": row[6] or "Moved to Trash",
                     "date": row[8] or "",
-                    "explanation_html": explanation_html
+                    "explanation_html": explanation_html,
+                    "id": row[9]
                 })
 
         return render_template("pishing.html", emails=emails)
@@ -543,7 +603,7 @@ def phishing_logs():
 @require_auth
 def compose():
     try:
-        return render_template("compose.html")
+        return render_template("compose.html", user_email=session.get("user_email"))
     except Exception as e:
         logger.error(e)
         return handle_error(e, 500, False)

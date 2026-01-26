@@ -1,3 +1,52 @@
+<div class="content-header">
+    <h1><i class="fas fa-mail-bulk"></i> All Mail</h1>
+    <p class="subtitle">View all your emails from every folder</p>
+</div>
+
+<div id="allMailList" class="email-list">
+    {% for email in emails %}
+    <div class="email-card" data-email-id="{{ email.id }}">
+        <div class="email-icon">
+            <i class="fas fa-envelope"></i>
+        </div>
+        <div class="email-content">
+            <div class="email-header">
+                <h3 class="email-sender">{{ email.sender or "Unknown" }}</h3>
+                <span class="email-badge muted"><i class="fas fa-mail-bulk"></i> Mail</span>
+            </div>
+            <h4 class="email-subject">{{ email.subject or "(No Subject)" }}</h4>
+            <p class="email-preview">{{ email.body }}</p>
+            <div class="email-meta" style="margin-top:8px;font-size:12px;color:var(--gray);">
+                <span>ID: {{ email.id[:8] }}...</span>
+            </div>
+        </div>
+        <div class="email-actions">
+            <button class="icon-btn view-btn" data-email-id="{{ email.id }}"><i class="fas fa-eye"></i></button>
+            <button class="icon-btn star-btn" data-email-id="{{ email.id }}"
+                data-starred="{{ 'true' if email.starred else 'false' }}">
+                <i class="{{ 'fas' if email.starred else 'far' }} fa-star"
+                    style="{{ 'color:var(--primary)' if email.starred else '' }}"></i>
+            </button>
+            <button class="icon-btn flag-btn" data-email-id="{{ email.id }}"
+                data-flagged="{{ 'true' if email.flagged else 'false' }}">
+                <i class="{{ 'fas' if email.flagged else 'far' }} fa-flag"
+                    style="{{ 'color:var(--danger)' if email.flagged else '' }}"></i>
+            </button>
+            <button class="icon-btn learn-more-btn" data-email-id="{{ email.id }}"><i
+                    class="fas fa-info-circle"></i></button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if next_page_token %}
+<button id="loadMoreAllMail" class="btn btn-block"
+    style="width:100%;margin-top:20px;padding:12px;background:white;border:1px solid #ddd;"
+    data-next-page="{{ next_page_token }}">
+    <i class="fas fa-chevron-down"></i> Load more
+</button>
+{% endif %}
+
 <script>
     (function () {
         const listContainer = document.getElementById("allMailList");
@@ -13,10 +62,10 @@
             const emailId = btn.dataset.emailId;
             if (!emailId) return;
 
-            if (btn.classList.contains("view-btn")) viewEmail(emailId);
+            if (btn.classList.contains("view-btn")) viewEmail(emailId, btn);
             else if (btn.classList.contains("star-btn")) toggleAction(emailId, btn, "star");
             else if (btn.classList.contains("flag-btn")) toggleAction(emailId, btn, "flag");
-            else if (btn.classList.contains("learn-more-btn")) showEmailDetails(emailId);
+            else if (btn.classList.contains("learn-more-btn")) showEmailDetails(emailId, btn);
         });
 
         // ----------------- LOAD MORE -----------------
@@ -80,17 +129,41 @@
         }
 
         // ----------------- HELPERS -----------------
-        function viewEmail(id) {
+        function viewEmail(id, btn) {
+            const originalIcon = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            }
+
             fetch(`/api/view-email?message_id=${encodeURIComponent(id)}`)
                 .then(r => r.json())
                 .then(data => showModal(data, "email"))
-                .catch(() => alert("Failed to load email"));
+                .catch(() => alert("Failed to load email"))
+                .finally(() => {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = originalIcon;
+                    }
+                });
         }
 
         function toggleAction(id, btn, type) {
             const attr = type === "star" ? "data-starred" : "data-flagged";
             const current = btn.dataset[attr] === "true";
             const newState = !current;
+
+            // Optimistic UI Update
+            const originalIconClass = btn.querySelector("i").className;
+            const originalColor = btn.style.color;
+
+            // Temp update
+            const icon = btn.querySelector("i");
+            icon.className = `${newState ? 'fas' : 'far'} fa-${type}`;
+            btn.style.color = newState ? (type === "star" ? "var(--primary)" : "var(--danger)") : "";
+
+            // Disable usage while syncing
+            btn.style.pointerEvents = "none";
 
             const endpoint = type === "star" ? "/api/toggle-star" : "/api/toggle-flag";
 
@@ -102,18 +175,36 @@
                 .then(r => r.json())
                 .then(() => {
                     btn.dataset[attr] = newState;
-                    const icon = btn.querySelector("i");
-                    icon.className = `${newState ? 'fas' : 'far'} fa-${type}`;
-                    btn.style.color = newState ? (type === "star" ? "var(--primary)" : "var(--danger)") : "";
+                    // Keep the optimistic update
                 })
-                .catch(err => alert("Failed to update: " + err.message));
+                .catch(err => {
+                    // Revert if failed
+                    alert("Failed to update: " + err.message);
+                    icon.className = originalIconClass;
+                    btn.style.color = originalColor;
+                })
+                .finally(() => {
+                    btn.style.pointerEvents = "auto";
+                });
         }
 
-        function showEmailDetails(id) {
+        function showEmailDetails(id, btn) {
+            const originalIcon = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            }
+
             fetch(`/api/view-email?message_id=${encodeURIComponent(id)}`)
                 .then(r => r.json())
                 .then(data => showModal(data, "details"))
-                .catch(() => alert("Failed to fetch details"));
+                .catch(() => alert("Failed to fetch details"))
+                .finally(() => {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = originalIcon;
+                    }
+                });
         }
 
         function showModal(data, type) {

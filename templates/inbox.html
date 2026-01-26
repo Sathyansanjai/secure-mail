@@ -69,7 +69,8 @@
         /* ---------------- VIEW EMAIL ---------------- */
         const card = e.target.closest(".email-card");
         if (card && !e.target.closest(".icon-btn")) {
-            viewEmail(card.dataset.emailId);
+            const viewBtn = card.querySelector('.view-btn');
+            viewEmail(card.dataset.emailId, viewBtn || card);
             return;
         }
 
@@ -79,8 +80,8 @@
         const deleteBtn = e.target.closest(".delete-btn");
 
         if (starBtn) toggleStar(starBtn);
-        if (archiveBtn) archiveEmail(archiveBtn.dataset.emailId);
-        if (deleteBtn) deleteEmail(deleteBtn.dataset.emailId);
+        if (archiveBtn) archiveEmail(archiveBtn.dataset.emailId, archiveBtn);
+        if (deleteBtn) deleteEmail(deleteBtn.dataset.emailId, deleteBtn);
     });
 
     /* ---------------- FUNCTIONS ---------------- */
@@ -88,6 +89,13 @@
     function toggleStar(btn) {
         const icon = btn.querySelector("i");
         const starred = icon.classList.contains("fas");
+        const originalClass = icon.className;
+        const originalColor = icon.style.color;
+
+        // Optimistic update
+        icon.className = starred ? "far fa-star" : "fas fa-star";
+        icon.style.color = starred ? "" : "var(--primary)";
+        btn.style.pointerEvents = "none";
 
         fetch("/api/toggle-star", {
             method: "POST",
@@ -96,46 +104,128 @@
                 message_id: btn.dataset.emailId,
                 star: !starred
             })
-        });
-
-        icon.className = starred ? "far fa-star" : "fas fa-star";
-        icon.style.color = starred ? "" : "var(--primary)";
+        })
+            .then(res => {
+                if (!res.ok) throw new Error("Failed");
+            })
+            .catch(() => {
+                // Revert
+                icon.className = originalClass;
+                icon.style.color = originalColor;
+                alert("Failed to update star");
+            })
+            .finally(() => {
+                btn.style.pointerEvents = "auto";
+            });
     }
 
-    function archiveEmail(emailId) {
+    function archiveEmail(emailId, btn) {
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
+
         fetch("/api/archive-mail", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message_id: emailId })
-        }).then(() => {
-            removeCard(emailId);
+        }).then(res => {
+            if (res.ok) {
+                removeCard(emailId);
+            } else {
+                throw new Error("Failed");
+            }
+        }).catch(err => {
+            alert("Failed to archive email");
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-archive"></i>';
+            }
         });
     }
 
-    function deleteEmail(emailId) {
+    function deleteEmail(emailId, btn) {
         if (!confirm("Delete this email?")) return;
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
 
         fetch("/api/delete-mail", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message_id: emailId })
-        }).then(() => {
-            removeCard(emailId);
+        }).then(res => {
+            if (res.ok) {
+                removeCard(emailId);
+            } else {
+                throw new Error("Failed");
+            }
+        }).catch(err => {
+            alert("Failed to delete email");
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-trash"></i>';
+            }
         });
     }
 
-    function viewEmail(emailId) {
+    function viewEmail(emailId, triggerElement) {
+        let originalContent = "";
+        if (triggerElement && triggerElement.classList.contains('email-card')) {
+            triggerElement.style.opacity = "0.7";
+            triggerElement.style.cursor = "wait";
+        } else if (triggerElement) {
+            originalContent = triggerElement.innerHTML;
+            triggerElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            triggerElement.disabled = true;
+        }
+
         fetch(`/api/view-email?message_id=${emailId}`)
             .then(r => r.json())
             .then(data => {
-                alert(
-                    `From: ${data.sender}\n\nSubject: ${data.subject}\n\n${data.body}`
-                );
+                showModal(data);
+            })
+            .catch(err => alert("Failed to load email"))
+            .finally(() => {
+                if (triggerElement && triggerElement.classList.contains('email-card')) {
+                    triggerElement.style.opacity = "1";
+                    triggerElement.style.cursor = "pointer";
+                } else if (triggerElement) {
+                    triggerElement.innerHTML = originalContent;
+                    triggerElement.disabled = false;
+                }
             });
+    }
+
+    function showModal(data) {
+        const modal = document.createElement("div");
+        modal.className = "email-modal";
+        modal.innerHTML = `
+            <div class="modal-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;"></div>
+            <div class="modal-content" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:12px;width:90%;max-width:600px;z-index:1000;box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                    <h2 style="margin:0;font-size:1.2rem;">${data.subject || "No Subject"}</h2>
+                    <button style="background:none;border:none;font-size:1.5rem;cursor:pointer;" class="modal-close">&times;</button>
+                </div>
+                <p><strong>From:</strong> ${data.sender}</p>
+                <hr>
+                <div style="max-height:60vh; overflow-y:auto; margin-top:10px;">${data.body || "No content."}</div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modal.querySelector(".modal-overlay").onclick = () => modal.remove();
+        modal.querySelector(".modal-close").onclick = () => modal.remove();
     }
 
     function removeCard(emailId) {
         const card = document.querySelector(`[data-email-id="${emailId}"]`);
-        if (card) card.remove();
+        if (card) {
+            card.style.transform = "translateX(50px)";
+            card.style.opacity = "0";
+            setTimeout(() => card.remove(), 300);
+        }
     }
 </script>
