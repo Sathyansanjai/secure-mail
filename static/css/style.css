@@ -223,10 +223,15 @@ button {
 .menu-item .badge {
     font-size: 0.8rem;
     font-weight: bold;
+    color: var(--text-muted);
+    /* Default badge color */
 }
 
 .menu-item .badge.danger {
-    color: var(--danger);
+    color: var(--danger) !important;
+    background: #fed7d7;
+    padding: 2px 6px;
+    border-radius: 10px;
 }
 
 .menu-divider {
@@ -239,21 +244,31 @@ button {
     background: #f8f9fa;
     padding: 15px;
     border-radius: 8px;
+    border: 1px solid #e0e0e0;
 }
 
 .stats-widget h4 {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: var(--text-muted);
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    font-weight: 700;
 }
 
 .stat-item {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
     font-size: 0.9rem;
+}
+
+.text-success {
+    color: var(--success);
+}
+
+.text-danger {
+    color: var(--danger);
 }
 
 /* Main Content */

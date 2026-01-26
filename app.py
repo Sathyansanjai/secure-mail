@@ -210,6 +210,8 @@ def inbox_content():
             maxResults=25
         ).execute()
 
+        from utils.database import get_db_connection
+        
         emails = []
         for m in results.get("messages", []):
             msg = service.users().messages().get(
@@ -220,11 +222,29 @@ def inbox_content():
             ).execute()
 
             headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+            
+            # Check DB for phishing status
+            is_phishing = False
+            confidence = 0
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT phishing, confidence FROM email_logs WHERE message_id = ?",
+                    (m["id"],)
+                )
+                row = cursor.fetchone()
+                if row:
+                    is_phishing = bool(row[0])
+                    confidence = row[1] or 0
+            
             emails.append({
                 "id": m["id"],
                 "sender": headers.get("From", ""),
                 "subject": headers.get("Subject", ""),
-                "body": msg.get("snippet", "")
+                "body": msg.get("snippet", ""),
+                "is_phishing": is_phishing,
+                "confidence": int(confidence * 100) if confidence else None,
+                "scanned": row is not None
             })
 
         return render_template("inbox.html", emails=emails)
@@ -340,7 +360,7 @@ def scan_emails():
 
 # ---------------- All Mail ----------------
 
-@app.route("/all-mail")
+@app.route("/allmail")
 @require_auth
 def all_mail():
     try:
@@ -353,6 +373,8 @@ def all_mail():
             maxResults=50
         ).execute()
 
+        from utils.database import get_db_connection
+        
         emails = []
         for m in results.get("messages", []):
             msg = service.users().messages().get(
@@ -369,13 +391,30 @@ def all_mail():
             starred = "STARRED" in label_ids
             flagged = "IMPORTANT" in label_ids
             
+            # Check DB for phishing status
+            is_phishing = False
+            confidence = 0
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT phishing, confidence FROM email_logs WHERE message_id = ?",
+                    (m["id"],)
+                )
+                row = cursor.fetchone()
+                if row:
+                    is_phishing = bool(row[0])
+                    confidence = row[1] or 0
+            
             emails.append({
                 "id": m["id"],
                 "sender": headers.get("From", ""),
                 "subject": headers.get("Subject", ""),
                 "body": msg.get("snippet", ""),
                 "starred": starred,
-                "flagged": flagged
+                "flagged": flagged,
+                "is_phishing": is_phishing,
+                "confidence": int(confidence * 100) if confidence else None,
+                "scanned": row is not None
             })
 
         # Check for next page token
@@ -388,7 +427,7 @@ def all_mail():
         return handle_error(e, 500, False)
 
 
-@app.route("/api/all-mail")
+@app.route("/api/allmail")
 @require_auth
 def api_all_mail():
     try:
@@ -397,6 +436,8 @@ def api_all_mail():
             return jsonify({"error": "Gmail unavailable"}), 500
 
         page_token = request.args.get('pageToken')
+        if not page_token or page_token == 'undefined':
+            page_token = None
         
         results = service.users().messages().list(
             userId="me",
@@ -407,27 +448,50 @@ def api_all_mail():
 
         emails = []
         for m in results.get("messages", []):
-            msg = service.users().messages().get(
-                userId="me",
-                id=m["id"],
-                format="metadata",
-                metadataHeaders=["From", "Subject"]
-            ).execute()
+            try:
+                msg = service.users().messages().get(
+                    userId="me",
+                    id=m["id"],
+                    format="metadata",
+                    metadataHeaders=["From", "Subject"]
+                ).execute()
 
-            headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
-            
-            label_ids = msg.get("labelIds", [])
-            starred = "STARRED" in label_ids
-            flagged = "IMPORTANT" in label_ids
-            
-            emails.append({
-                "id": m["id"],
-                "sender": headers.get("From", ""),
-                "subject": headers.get("Subject", ""),
-                "body": msg.get("snippet", ""),
-                "starred": starred,
-                "flagged": flagged
-            })
+                headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                
+                label_ids = msg.get("labelIds", [])
+                starred = "STARRED" in label_ids
+                flagged = "IMPORTANT" in label_ids
+                
+                # Check DB for phishing status
+                is_phishing = False
+                confidence = 0
+                scanned = False
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT phishing, confidence FROM email_logs WHERE message_id = ?",
+                        (m["id"],)
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        is_phishing = bool(row[0])
+                        confidence = row[1] or 0
+                        scanned = True
+
+                emails.append({
+                    "id": m["id"],
+                    "sender": headers.get("From", "Unknown"),
+                    "subject": headers.get("Subject", "(No Subject)"),
+                    "body": msg.get("snippet", ""),
+                    "starred": starred,
+                    "flagged": flagged,
+                    "is_phishing": is_phishing,
+                    "confidence": int(confidence * 100) if confidence else None,
+                    "scanned": scanned
+                })
+            except Exception as inner_e:
+                logger.warning(f"Failed to fetch message details for {m['id']}: {inner_e}")
+                continue
             
         return jsonify({
             "emails": emails,
@@ -435,7 +499,7 @@ def api_all_mail():
         })
 
     except Exception as e:
-        logger.error(e)
+        logger.error(f"API All Mail Error: {e}")
         return jsonify({"error": str(e)}), 500
 
     except Exception as e:

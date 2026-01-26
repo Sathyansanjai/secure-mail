@@ -12,7 +12,16 @@
         <div class="email-content">
             <div class="email-header">
                 <h3 class="email-sender">{{ email.sender or "Unknown" }}</h3>
-                <span class="email-badge muted"><i class="fas fa-mail-bulk"></i> Mail</span>
+                {% if email.confidence is not none %}
+                <span class="email-badge {{ 'danger' if email.is_phishing else 'safe' }}">
+                    <i class="fas {{ 'fa-exclamation-triangle' if email.is_phishing else 'fa-check-circle' }}"></i>
+                    {{ 'Phishing' if email.is_phishing else 'Safe' }} ({{ email.confidence }}%)
+                </span>
+                {% elif email.scanned %}
+                <span class="email-badge safe"><i class="fas fa-check-circle"></i> Safe</span>
+                {% else %}
+                <span class="email-badge muted"><i class="fas fa-hourglass-half"></i> Scanning...</span>
+                {% endif %}
             </div>
             <h4 class="email-subject">{{ email.subject or "(No Subject)" }}</h4>
             <p class="email-preview">{{ email.body }}</p>
@@ -90,7 +99,16 @@
                             <div class="email-content">
                                 <div class="email-header">
                                     <h3 class="email-sender">${email.sender || "Unknown"}</h3>
-                                    <span class="email-badge muted"><i class="fas fa-mail-bulk"></i> Mail</span>
+                                    ${email.confidence !== null ? `
+                                        <span class="email-badge ${email.is_phishing ? 'danger' : 'safe'}">
+                                            <i class="fas ${email.is_phishing ? 'fa-exclamation-triangle' : 'fa-check-circle'}"></i> 
+                                            ${email.is_phishing ? 'Phishing' : 'Safe'} (${email.confidence}%)
+                                        </span>
+                                    ` : email.scanned ? `
+                                        <span class="email-badge safe"><i class="fas fa-check-circle"></i> Safe</span>
+                                    ` : `
+                                        <span class="email-badge muted"><i class="fas fa-hourglass-half"></i> Scanning...</span>
+                                    `}
                                 </div>
                                 <h4 class="email-subject">${email.subject || "(No Subject)"}</h4>
                                 <p class="email-preview">${email.body || ""}</p>
