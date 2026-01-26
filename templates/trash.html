@@ -1,3 +1,11 @@
+<div class="content-header">
+    <h1>
+        <i class="fas fa-trash"></i>
+        Trash
+    </h1>
+    <p class="subtitle">Deleted emails - phishing emails include AI explanations</p>
+</div>
+
 <div class="email-list">
     {% if emails|length == 0 %}
     <div class="empty-state">
@@ -7,29 +15,55 @@
     </div>
     {% else %}
     {% for email in emails %}
-    <div class="email-card">
-        <div class="email-icon">
+    <div class="email-card {% if email.is_phishing %}phishing{% endif %}">
+        <div class="email-icon {% if email.is_phishing %}danger{% endif %}">
+            {% if email.is_phishing %}
+            <i class="fas fa-exclamation-triangle"></i>
+            {% else %}
             <i class="fas fa-envelope-open-text"></i>
+            {% endif %}
         </div>
 
         <div class="email-content">
             <div class="email-header">
                 <h3 class="email-sender">{{ email.sender }}</h3>
+                {% if email.is_phishing %}
+                <span class="email-badge danger">
+                    <i class="fas fa-shield-alt"></i>
+                    Phishing {{ email.confidence }}%
+                </span>
+                {% else %}
                 <span class="email-badge muted">
                     <i class="fas fa-trash"></i>
                     Trashed
                 </span>
+                {% endif %}
             </div>
 
             <h4 class="email-subject">{{ email.subject }}</h4>
             <p class="email-preview">{{ email.body }}</p>
+
+            {% if email.is_phishing %}
+            <div class="phishing-info">
+                <p><strong>Reason:</strong> {{ email.reason }}</p>
+                <p><strong>Action:</strong> {{ email.action }}</p>
+                {% if email.date %}
+                <p><strong>Date:</strong> {{ email.date }}</p>
+                {% endif %}
+            </div>
+
+            <!-- XAI Explanation Section -->
+            {% if email.explanation_html %}
+            {{ email.explanation_html | safe }}
+            {% endif %}
+            {% endif %}
         </div>
 
         <div class="email-actions">
-            <button class="icon-btn" title="Restore (Coming Soon)">
+            <button class="icon-btn restore-btn" title="Restore" data-email-id="{{ email.id }}">
                 <i class="fas fa-undo"></i>
             </button>
-            <button class="icon-btn danger" title="Delete Permanently (Coming Soon)">
+            <button class="icon-btn danger delete-btn" title="Delete Permanently" data-email-id="{{ email.id }}">
                 <i class="fas fa-times"></i>
             </button>
         </div>
@@ -37,3 +71,119 @@
     {% endfor %}
     {% endif %}
 </div>
+
+<script>
+    (function () {
+        // Function to attach event listeners for trash actions
+        function attachTrashListeners() {
+            // Restore email functionality
+            document.querySelectorAll('.restore-btn').forEach(btn => {
+                // Remove existing listeners to avoid duplicates
+                const newBtn = btn.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+
+                newBtn.addEventListener('click', function () {
+                    const emailId = this.getAttribute('data-email-id');
+                    const emailCard = this.closest('.email-card');
+
+                    if (!confirm('Restore this email to inbox?')) return;
+
+                    // Disable button during request
+                    this.disabled = true;
+                    this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+                    fetch('/api/restore-email', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ message_id: emailId })
+                    })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.message) {
+                                emailCard.style.opacity = '0.5';
+                                emailCard.style.transition = 'opacity 0.3s';
+                                setTimeout(() => {
+                                    // Reload trash page
+                                    if (typeof loadPage === 'function') {
+                                        loadPage('/trash');
+                                    } else {
+                                        location.reload();
+                                    }
+                                }, 300);
+                            } else {
+                                alert('Failed to restore email: ' + (data.error || 'Unknown error'));
+                                this.disabled = false;
+                                this.innerHTML = '<i class="fas fa-undo"></i>';
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error:', err);
+                            alert('Failed to restore email');
+                            this.disabled = false;
+                            this.innerHTML = '<i class="fas fa-undo"></i>';
+                        });
+                });
+            });
+
+            // Delete permanently functionality
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                // Remove existing listeners to avoid duplicates
+                const newBtn = btn.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+
+                newBtn.addEventListener('click', function () {
+                    const emailId = this.getAttribute('data-email-id');
+                    const emailCard = this.closest('.email-card');
+
+                    if (!confirm('Permanently delete this email? This action cannot be undone.')) return;
+
+                    // Disable button during request
+                    this.disabled = true;
+                    this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+                    fetch('/api/delete-email', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ message_id: emailId })
+                    })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.message) {
+                                emailCard.style.opacity = '0.5';
+                                emailCard.style.transition = 'opacity 0.3s';
+                                setTimeout(() => {
+                                    // Reload trash page
+                                    if (typeof loadPage === 'function') {
+                                        loadPage('/trash');
+                                    } else {
+                                        location.reload();
+                                    }
+                                }, 300);
+                            } else {
+                                alert('Failed to delete email: ' + (data.error || 'Unknown error'));
+                                this.disabled = false;
+                                this.innerHTML = '<i class="fas fa-times"></i>';
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error:', err);
+                            alert('Failed to delete email');
+                            this.disabled = false;
+                            this.innerHTML = '<i class="fas fa-times"></i>';
+                        });
+                });
+            });
+        }
+
+        // Initialize listeners when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', attachTrashListeners);
+        } else {
+            attachTrashListeners();
+        }
+    })();
+</script>

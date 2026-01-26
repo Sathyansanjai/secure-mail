@@ -49,7 +49,7 @@
 <!-- ================= SIDEBAR ================= -->
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-        <button class="compose-btn" disabled>
+        <button class="compose-btn" id="composeBtn">
             <i class="fas fa-plus"></i>
             <span>Compose</span>
         </button>
@@ -57,6 +57,7 @@
 
     <div class="sidebar-menu">
         <a href="javascript:void(0)" class="menu-item active" data-page="inbox">Inbox <span class="badge" id="inbox-count">0</span></a>
+        <a href="javascript:void(0)" class="menu-item" data-page="allmail">All Mail <span class="badge" id="allmail-count">0</span></a>
         <a href="javascript:void(0)" class="menu-item" data-page="phishing">Phishing Attacks <span class="badge danger" id="phishing-count">0</span></a>
         <a href="javascript:void(0)" class="menu-item" data-page="trash">Trash</a>
 
@@ -80,84 +81,7 @@
 </main>
 
 <!-- ================= JS ================= -->
-<script>
-// ---------------- Load Partial Pages ----------------
-function loadPage(page) {
-    const urlMap = {
-        inbox: "/inbox",
-        trash: "/trash",
-        phishing: "/phishing-logs"
-    };
-    const url = urlMap[page] || "/inbox";
-
-    const content = document.getElementById("mainContent");
-    content.innerHTML = '<div class="loading-spinner"><i class="fas fa-circle-notch fa-spin"></i><p>Loading...</p></div>';
-
-    fetch(url)
-        .then(res => res.text())
-        .then(html => {
-            content.innerHTML = html;
-            filterEmails(""); // reset search
-        })
-        .catch(err => {
-            content.innerHTML = "<h2 style='padding:20px'>Failed to load page</h2>";
-            console.error(err);
-        });
-}
-
-// ---------------- Refresh Stats ----------------
-function updateStats() {
-    fetch('/api/stats')
-        .then(res => res.json())
-        .then(data => {
-            document.getElementById("stat-total").innerText = data.total;
-            document.getElementById("stat-safe").innerText = data.safe;
-            document.getElementById("stat-phishing").innerText = data.phishing;
-
-            document.getElementById("inbox-count").innerText = data.safe;
-            document.getElementById("phishing-count").innerText = data.phishing;
-        })
-        .catch(console.error);
-}
-
-// ---------------- Sidebar Click Handler ----------------
-document.querySelectorAll(".menu-item").forEach(item => {
-    item.addEventListener("click", () => {
-        document.querySelectorAll(".menu-item").forEach(mi => mi.classList.remove("active"));
-        item.classList.add("active");
-        const page = item.dataset.page;
-        loadPage(page);
-    });
-});
-
-// ---------------- Search Function ----------------
-document.getElementById("searchInput").addEventListener("input", e => {
-    filterEmails(e.target.value.toLowerCase());
-});
-
-function filterEmails(query) {
-    document.querySelectorAll(".email-card").forEach(card => {
-        const sender = card.querySelector(".email-sender")?.textContent.toLowerCase() || "";
-        const subject = card.querySelector(".email-subject")?.textContent.toLowerCase() || "";
-        const body = card.querySelector(".email-preview")?.textContent.toLowerCase() || "";
-        card.style.display = sender.includes(query) || subject.includes(query) || body.includes(query) ? "flex" : "none";
-    });
-}
-
-// ---------------- Refresh Button ----------------
-function refreshPage() {
-    const active = document.querySelector(".menu-item.active");
-    if (active) loadPage(active.dataset.page);
-    updateStats();
-}
-
-// ---------------- Auto-load inbox & stats ----------------
-window.addEventListener("load", () => {
-    loadPage("inbox");
-    updateStats();
-    setInterval(updateStats, 10000); // refresh stats every 10s
-});
-</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
 
 </body>
 </html>

@@ -1,52 +1,70 @@
+"""
+Database initialization and management.
+"""
 import sqlite3
+from config import config
+import logging
+import os
 
-import sqlite3
+logger = logging.getLogger(__name__)
 
-DB_NAME = "smail.db"
+DB_PATH = config.DATABASE_PATH
+
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    """Initialize database if it doesn't exist"""
+    os.makedirs("database", exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS email_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sender TEXT,
+        receiver TEXT,
         subject TEXT,
         body TEXT,
         phishing INTEGER,
+        confidence REAL,
         reason TEXT,
+        action TEXT,
+        explanation TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
 
+    # ---- Lightweight migration for older DBs (add missing columns) ----
+    # Some earlier versions created `email_logs` without `message_id` column.
+    cursor.execute("PRAGMA table_info(email_logs)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+
+    # Only add message_id if it doesn't exist (other columns are in CREATE TABLE)
+    if "message_id" not in existing_cols:
+        try:
+            cursor.execute("ALTER TABLE email_logs ADD COLUMN message_id TEXT")
+        except Exception as e:
+            # Don't hard fail on migration; app should still run
+            logger.warning(f"DB migration warning: could not add column message_id: {e}")
+
     conn.commit()
     conn.close()
-    print("✓ Database initialized")
+    # Use plain ASCII to avoid encoding issues on Windows terminals
+    logger.info("Database initialized")
 
 
 def cleanup_old_logs(keep_last_n=500):
-    """
-    Keep only the most recent N email logs.
-    This helps prevent the database from growing too large.
-    
-    Args:
-        keep_last_n: Number of most recent logs to keep (default: 500)
-    """
-    conn = sqlite3.connect("smail.db")
+    """Keep only the most recent N email logs to optimize DB size"""
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
-    # Count current logs
+
     cursor.execute("SELECT COUNT(*) FROM email_logs")
     current_count = cursor.fetchone()[0]
-    print(f"Current email logs: {current_count}")
-    
+
     if current_count <= keep_last_n:
-        print(f"No cleanup needed. Database has {current_count} logs (keeping {keep_last_n})")
         conn.close()
+        print(f"No cleanup needed. Database has {current_count} logs")
         return
-    
-    # Delete old logs, keeping only the most recent N
+
     cursor.execute("""
         DELETE FROM email_logs
         WHERE id NOT IN (
@@ -55,46 +73,35 @@ def cleanup_old_logs(keep_last_n=500):
             LIMIT ?
         )
     """, (keep_last_n,))
-    
+
     deleted = cursor.rowcount
     conn.commit()
-    
-    # Vacuum to reclaim disk space
     cursor.execute("VACUUM")
-    
     conn.close()
-    
-    print(f"✓ Deleted {deleted} old logs")
-    print(f"✓ Kept the {keep_last_n} most recent logs")
-    print(f"✓ Database optimized")
+    print(f"✓ Deleted {deleted} old logs, kept {keep_last_n} most recent")
 
 
 def get_db_stats():
     """Display database statistics"""
-    conn = sqlite3.connect("smail.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
-    # Total logs
+
     cursor.execute("SELECT COUNT(*) FROM email_logs")
     total = cursor.fetchone()[0]
-    
-    # Phishing count
+
     cursor.execute("SELECT COUNT(*) FROM email_logs WHERE phishing = 1")
     phishing = cursor.fetchone()[0]
-    
-    # Safe count
+
     safe = total - phishing
-    
-    # Oldest log
+
     cursor.execute("SELECT MIN(created_at) FROM email_logs")
     oldest = cursor.fetchone()[0]
-    
-    # Newest log
+
     cursor.execute("SELECT MAX(created_at) FROM email_logs")
     newest = cursor.fetchone()[0]
-    
+
     conn.close()
-    
+
     print("\n" + "="*50)
     print("DATABASE STATISTICS")
     print("="*50)
@@ -104,20 +111,3 @@ def get_db_stats():
     print(f"Oldest Log:       {oldest}")
     print(f"Newest Log:       {newest}")
     print("="*50 + "\n")
-
-
-if __name__ == "__main__":
-    # Display current stats
-    get_db_stats()
-    
-    # Ask user for confirmation
-    print("This script will keep only the 500 most recent email logs.")
-    print("All older logs will be permanently deleted.")
-    response = input("\nContinue? (yes/no): ").strip().lower()
-    
-    if response == "yes":
-        cleanup_old_logs(keep_last_n=500)
-        print("\nUpdated statistics:")
-        get_db_stats()
-    else:
-        print("Cleanup cancelled.")

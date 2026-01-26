@@ -1,0 +1,152 @@
+<script>
+    (function () {
+        const listContainer = document.getElementById("allMailList");
+        const loadMoreBtn = document.getElementById("loadMoreAllMail");
+
+        if (!listContainer) return;
+
+        // ----------------- EVENT DELEGATION -----------------
+        listContainer.addEventListener("click", function (e) {
+            const btn = e.target.closest("button");
+            if (!btn) return;
+
+            const emailId = btn.dataset.emailId;
+            if (!emailId) return;
+
+            if (btn.classList.contains("view-btn")) viewEmail(emailId);
+            else if (btn.classList.contains("star-btn")) toggleAction(emailId, btn, "star");
+            else if (btn.classList.contains("flag-btn")) toggleAction(emailId, btn, "flag");
+            else if (btn.classList.contains("learn-more-btn")) showEmailDetails(emailId);
+        });
+
+        // ----------------- LOAD MORE -----------------
+        if (loadMoreBtn) {
+            loadMoreBtn.addEventListener("click", function () {
+                const token = this.dataset.nextPage;
+                if (!token) return;
+
+                this.disabled = true;
+                this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+
+                fetch(`/api/all-mail?pageToken=${encodeURIComponent(token)}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        (data.emails || []).forEach(email => {
+                            const div = document.createElement("div");
+                            div.className = "email-card";
+                            div.dataset.emailId = email.id;
+
+                            div.innerHTML = `
+                            <div class="email-icon"><i class="fas fa-envelope"></i></div>
+                            <div class="email-content">
+                                <div class="email-header">
+                                    <h3 class="email-sender">${email.sender || "Unknown"}</h3>
+                                    <span class="email-badge muted"><i class="fas fa-mail-bulk"></i> Mail</span>
+                                </div>
+                                <h4 class="email-subject">${email.subject || "(No Subject)"}</h4>
+                                <p class="email-preview">${email.body || ""}</p>
+                                <div class="email-meta" style="margin-top:8px;font-size:12px;color:var(--gray);">
+                                    <span>ID: ${email.id?.substring(0, 8)}...</span>
+                                </div>
+                            </div>
+                            <div class="email-actions">
+                                <button class="icon-btn view-btn" data-email-id="${email.id}"><i class="fas fa-eye"></i></button>
+                                <button class="icon-btn star-btn" data-email-id="${email.id}" data-starred="${email.starred}">
+                                    <i class="${email.starred ? 'fas' : 'far'} fa-star" style="${email.starred ? 'color:var(--primary)' : ''}"></i>
+                                </button>
+                                <button class="icon-btn flag-btn" data-email-id="${email.id}" data-flagged="${email.flagged}">
+                                    <i class="${email.flagged ? 'fas' : 'far'} fa-flag" style="${email.flagged ? 'color:var(--danger)' : ''}"></i>
+                                </button>
+                                <button class="icon-btn learn-more-btn" data-email-id="${email.id}"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                        `;
+                            listContainer.appendChild(div);
+                        });
+
+                        if (data.nextPageToken) {
+                            this.disabled = false;
+                            this.innerHTML = '<i class="fas fa-chevron-down"></i> Load more';
+                            this.dataset.nextPage = data.nextPageToken;
+                        } else {
+                            this.remove();
+                        }
+                    })
+                    .catch(() => {
+                        this.disabled = false;
+                        this.innerHTML = '<i class="fas fa-chevron-down"></i> Load more';
+                        alert("Failed to load emails");
+                    });
+            });
+        }
+
+        // ----------------- HELPERS -----------------
+        function viewEmail(id) {
+            fetch(`/api/view-email?message_id=${encodeURIComponent(id)}`)
+                .then(r => r.json())
+                .then(data => showModal(data, "email"))
+                .catch(() => alert("Failed to load email"));
+        }
+
+        function toggleAction(id, btn, type) {
+            const attr = type === "star" ? "data-starred" : "data-flagged";
+            const current = btn.dataset[attr] === "true";
+            const newState = !current;
+
+            const endpoint = type === "star" ? "/api/toggle-star" : "/api/toggle-flag";
+
+            fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message_id: id, [type]: newState })
+            })
+                .then(r => r.json())
+                .then(() => {
+                    btn.dataset[attr] = newState;
+                    const icon = btn.querySelector("i");
+                    icon.className = `${newState ? 'fas' : 'far'} fa-${type}`;
+                    btn.style.color = newState ? (type === "star" ? "var(--primary)" : "var(--danger)") : "";
+                })
+                .catch(err => alert("Failed to update: " + err.message));
+        }
+
+        function showEmailDetails(id) {
+            fetch(`/api/view-email?message_id=${encodeURIComponent(id)}`)
+                .then(r => r.json())
+                .then(data => showModal(data, "details"))
+                .catch(() => alert("Failed to fetch details"));
+        }
+
+        function showModal(data, type) {
+            const modal = document.createElement("div");
+            modal.className = "email-modal";
+            const bodyHtml = type === "email" ? `
+            <p><strong>From:</strong> ${data.sender}</p>
+            <p><strong>Date:</strong> ${data.date}</p>
+            <hr>
+            <div style="max-height:60vh; overflow-y:auto;">${data.body || data.snippet || "No content."}</div>
+        ` : `
+            <div style="background:#f8f9fa;padding:15px;border-radius:8px;font-family:monospace;font-size:12px;">
+                <p><strong>Message ID:</strong> ${data.message_id || "N/A"}</p>
+                <p><strong>Labels:</strong> ${(data.labels || []).join(", ")}</p>
+                <p><strong>Snippet:</strong> ${data.snippet || "N/A"}</p>
+            </div>
+        `;
+
+            modal.innerHTML = `
+            <div class="modal-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;"></div>
+            <div class="modal-content" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:12px;width:90%;max-width:600px;z-index:1000;box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                    <h2 style="margin:0;font-size:1.2rem;">${type === "email" ? (data.subject || "No Subject") : "Technical Details"}</h2>
+                    <button style="background:none;border:none;font-size:1.5rem;cursor:pointer;" class="modal-close">&times;</button>
+                </div>
+                <div>${bodyHtml}</div>
+            </div>
+        `;
+            document.body.appendChild(modal);
+
+            modal.querySelector(".modal-overlay").onclick = () => modal.remove();
+            modal.querySelector(".modal-close").onclick = () => modal.remove();
+        }
+
+    })();
+</script>

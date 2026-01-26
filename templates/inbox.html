@@ -6,7 +6,7 @@
     <p class="subtitle">Safe emails only - phishing threats automatically removed</p>
 </div>
 
-<div class="email-list">
+<div class="email-list" id="emailList">
     {% if emails|length == 0 %}
     <div class="empty-state">
         <i class="fas fa-inbox"></i>
@@ -15,29 +15,47 @@
     </div>
     {% else %}
     {% for email in emails %}
-    <div class="email-card">
+    <div class="email-card" data-email-id="{{ email.id }}">
         <div class="email-icon">
             <i class="fas fa-envelope"></i>
         </div>
+
         <div class="email-content">
             <div class="email-header">
                 <h3 class="email-sender">{{ email.sender }}</h3>
+
+                {% if email.confidence is not none %}
                 <span class="email-badge safe">
                     <i class="fas fa-check-circle"></i>
                     Safe {{ email.confidence }}%
                 </span>
+                {% elif email.scanned %}
+                <span class="email-badge safe">
+                    <i class="fas fa-check-circle"></i>
+                    Safe
+                </span>
+                {% else %}
+                <span class="email-badge muted">
+                    <i class="fas fa-hourglass-half"></i>
+                    Scanning…
+                </span>
+                {% endif %}
             </div>
+
             <h4 class="email-subject">{{ email.subject }}</h4>
             <p class="email-preview">{{ email.body }}</p>
         </div>
+
         <div class="email-actions">
-            <button class="icon-btn" title="Star">
+            <button class="icon-btn star-btn" data-email-id="{{ email.id }}" title="Star">
                 <i class="far fa-star"></i>
             </button>
-            <button class="icon-btn" title="Archive">
+
+            <button class="icon-btn archive-btn" data-email-id="{{ email.id }}" title="Archive">
                 <i class="fas fa-archive"></i>
             </button>
-            <button class="icon-btn" title="Delete">
+
+            <button class="icon-btn delete-btn" data-email-id="{{ email.id }}" title="Delete">
                 <i class="fas fa-trash"></i>
             </button>
         </div>
@@ -45,3 +63,79 @@
     {% endfor %}
     {% endif %}
 </div>
+<script>
+    document.addEventListener("click", function (e) {
+
+        /* ---------------- VIEW EMAIL ---------------- */
+        const card = e.target.closest(".email-card");
+        if (card && !e.target.closest(".icon-btn")) {
+            viewEmail(card.dataset.emailId);
+            return;
+        }
+
+        /* ---------------- BUTTON ACTIONS ---------------- */
+        const starBtn = e.target.closest(".star-btn");
+        const archiveBtn = e.target.closest(".archive-btn");
+        const deleteBtn = e.target.closest(".delete-btn");
+
+        if (starBtn) toggleStar(starBtn);
+        if (archiveBtn) archiveEmail(archiveBtn.dataset.emailId);
+        if (deleteBtn) deleteEmail(deleteBtn.dataset.emailId);
+    });
+
+    /* ---------------- FUNCTIONS ---------------- */
+
+    function toggleStar(btn) {
+        const icon = btn.querySelector("i");
+        const starred = icon.classList.contains("fas");
+
+        fetch("/api/toggle-star", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                message_id: btn.dataset.emailId,
+                star: !starred
+            })
+        });
+
+        icon.className = starred ? "far fa-star" : "fas fa-star";
+        icon.style.color = starred ? "" : "var(--primary)";
+    }
+
+    function archiveEmail(emailId) {
+        fetch("/api/archive-mail", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message_id: emailId })
+        }).then(() => {
+            removeCard(emailId);
+        });
+    }
+
+    function deleteEmail(emailId) {
+        if (!confirm("Delete this email?")) return;
+
+        fetch("/api/delete-mail", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message_id: emailId })
+        }).then(() => {
+            removeCard(emailId);
+        });
+    }
+
+    function viewEmail(emailId) {
+        fetch(`/api/view-email?message_id=${emailId}`)
+            .then(r => r.json())
+            .then(data => {
+                alert(
+                    `From: ${data.sender}\n\nSubject: ${data.subject}\n\n${data.body}`
+                );
+            });
+    }
+
+    function removeCard(emailId) {
+        const card = document.querySelector(`[data-email-id="${emailId}"]`);
+        if (card) card.remove();
+    }
+</script>

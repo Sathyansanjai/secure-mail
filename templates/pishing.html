@@ -1,4 +1,4 @@
-yy<div class="content-header">
+<div class="content-header">
     <h1>
         <i class="fas fa-exclamation-triangle"></i>
         Phishing Attack Logs
@@ -28,15 +28,23 @@ yy<div class="content-header">
                 </span>
             </div>
             <h4 class="email-subject">{{ email.subject }}</h4>
+            {% if email.body %}
+            <p class="email-preview">{{ email.body }}</p>
+            {% endif %}
             <div class="phishing-info">
                 <p><strong>Reason:</strong> {{ email.reason }}</p>
                 <p><strong>Action:</strong> {{ email.action }}</p>
                 <p><strong>Date:</strong> {{ email.date }}</p>
             </div>
-            
+
             <!-- XAI Explanation Section -->
             {% if email.explanation_html %}
             {{ email.explanation_html | safe }}
+            {% else %}
+            <div class="xai-explanation">
+                <p class="xai-note"><i class="fas fa-info-circle"></i>
+                    Explanation data not available for this email.</p>
+            </div>
             {% endif %}
         </div>
         <div class="email-actions">

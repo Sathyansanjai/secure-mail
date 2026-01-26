@@ -89,7 +89,7 @@
                             <a href="/forgot-password" class="forgot-link">Forgot Password?</a>
                         </div>
                         
-                        <button type="submit" class="login-btn">
+                        <button type="submit" class="login-btn" id="loginBtn">
                             <span>Sign In</span>
                             <i class="fas fa-arrow-right"></i>
                         </button>
@@ -104,9 +104,29 @@
     </div>
 
     <script>
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        const loginForm = document.getElementById('loginForm');
+        const loginBtn = document.getElementById('loginBtn');
+        loginForm.addEventListener('submit', async function(e) {
             e.preventDefault();
-            alert('For security, please use "Sign in with Google" button above.');
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<span>Signing in...</span>';
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            try {
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Login failed');
+                // proceed to OAuth to get Gmail access
+                window.location.href = data.redirect || '/start-oauth';
+            } catch (err) {
+                alert(err.message || 'Login failed');
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<span>Sign In</span><i class="fas fa-arrow-right"></i>';
+            }
         });
     </script>
 </body>

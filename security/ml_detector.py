@@ -2,9 +2,17 @@ import joblib
 import os
 import numpy as np
 from lime.lime_text import LimeTextExplainer
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Load trained model
 MODEL_PATH = "ml/phishing_model.pkl"
+
+# Ensure ml directory exists
+if not os.path.exists("ml"):
+    os.makedirs("ml")
+    logger.info("Created ml directory")
 
 # Initialize LIME explainer
 explainer = LimeTextExplainer(class_names=['Safe', 'Phishing'])
@@ -16,6 +24,7 @@ def ml_predict(text):
     """
     try:
         if not os.path.exists(MODEL_PATH):
+            logger.warning(f"ML model not found at {MODEL_PATH}. Please run train_model.py to train the model.")
             return False, 0.0, "Model not trained", {}
         
         model, vectorizer = joblib.load(MODEL_PATH)
@@ -74,7 +83,7 @@ def ml_predict(text):
                 }
                 
             except Exception as e:
-                print(f"LIME explanation error: {e}")
+                logger.warning(f"LIME explanation error: {e}")
                 explanation_data = {}
         
         # Determine reason with keyword detection
@@ -99,7 +108,7 @@ def ml_predict(text):
         return bool(prediction), float(pred_confidence), reason, explanation_data
     
     except Exception as e:
-        print(f"ML Prediction Error: {e}")
+        logger.error(f"ML Prediction Error: {e}")
         return False, 0.0, "Error in prediction", {}
 
 

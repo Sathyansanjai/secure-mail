@@ -1,0 +1,98 @@
+<div class="compose-container">
+    <div class="content-header" style="margin-bottom: 16px;">
+        <h1 style="margin:0;">
+            <i class="fas fa-pen-nib"></i>
+            Compose
+        </h1>
+        <p class="subtitle">Write a secure email. Phishing detection continues to protect your inbox.</p>
+    </div>
+
+    <form id="composeForm" class="compose-form">
+        <div class="compose-row">
+            <label class="compose-label" for="composeTo">To</label>
+            <input id="composeTo" type="email" name="to" class="compose-input" placeholder="example@gmail.com" required>
+        </div>
+
+        <div class="compose-row">
+            <label class="compose-label" for="composeSubject">Subject</label>
+            <input id="composeSubject" type="text" name="subject" class="compose-input" placeholder="Subject" required>
+        </div>
+
+        <div class="compose-row">
+            <label class="compose-label" for="composeBody">Message</label>
+            <textarea id="composeBody" name="body" class="compose-textarea" placeholder="Write your message..." rows="10" required></textarea>
+        </div>
+
+        <div class="compose-actions">
+            <button type="submit" class="send-btn">
+                <i class="fas fa-paper-plane"></i>
+                Send
+            </button>
+        </div>
+    </form>
+
+    <div id="composeStatus"></div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const form = document.getElementById("composeForm");
+    if (!form) return;
+    
+    form.addEventListener("submit", e => {
+        e.preventDefault();
+        
+        const statusDiv = document.getElementById("composeStatus");
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        
+        // Disable button and show loading
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+        statusDiv.innerHTML = '';
+
+        const formData = new FormData(e.target);
+        const to = formData.get("to");
+        const subject = formData.get("subject");
+        const body = formData.get("body");
+
+        if (!to || !subject || !body) {
+            statusDiv.innerHTML = '<p class="error">Please fill in all fields</p>';
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+            return;
+        }
+
+        fetch("/send-mail", {
+            method: "POST",
+            body: formData
+        })
+        .then(res => {
+            return res.json().then(data => {
+                if (!res.ok) {
+                    throw new Error(data.error || "Failed to send mail");
+                }
+                return data;
+            });
+        })
+        .then(data => {
+            statusDiv.innerHTML = `<p class="success"><i class="fas fa-check-circle"></i> ${data.message || "Mail sent successfully!"}</p>`;
+            form.reset();
+            
+            // Clear success message after 5 seconds
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 5000);
+        })
+        .catch(err => {
+            const errorMsg = err.message || "Failed to send mail. Please check your connection and try again.";
+            statusDiv.innerHTML = `<p class="error"><i class="fas fa-exclamation-circle"></i> ${errorMsg}</p>`;
+            console.error("Send mail error:", err);
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        });
+    });
+});
+</script>
