@@ -915,3 +915,16 @@ button {
     padding: 10px 15px;
     border-bottom: 1px solid rgba(229, 62, 62, 0.1);
 }
+.email-meta {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--gray);
+}
+
+.starred i {
+    color: var(--primary);
+}
+
+.flagged i {
+    color: var(--danger);
+}

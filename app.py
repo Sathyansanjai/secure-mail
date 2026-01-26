@@ -194,6 +194,74 @@ def get_body(payload):
         return base64.urlsafe_b64decode(payload["body"]["data"]).decode()
     return ""
 
+def get_email_status(message_id):
+    from utils.database import get_db_connection
+    is_phishing = False
+    confidence = 0
+    scanned = False
+    explanation = None
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT phishing, confidence, explanation FROM email_logs WHERE message_id = ?",
+            (message_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            is_phishing = bool(row[0])
+            confidence = row[1] or 0
+            explanation = row[2]
+            scanned = True
+            
+    return is_phishing, confidence, scanned, explanation
+
+# ---------------- API: View Email ----------------
+
+@app.route("/api/view-email")
+@require_auth
+def api_view_email():
+    try:
+        message_id = request.args.get("message_id")
+        if not message_id:
+            return jsonify({"error": "Message ID required"}), 400
+            
+        service = get_gmail_service()
+        if not service:
+            return jsonify({"error": "Gmail unavailable"}), 500
+            
+        msg = service.users().messages().get(
+            userId="me",
+            id=message_id,
+            format="full"
+        ).execute()
+        
+        headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+        body = get_body(msg.get("payload", {}))
+        
+        # Format date
+        date_str = ""
+        internal_date = msg.get("internalDate")
+        if internal_date:
+            try:
+                ts = int(internal_date) / 1000
+                date_str = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')
+            except:
+                date_str = headers.get("Date", "")
+
+        return jsonify({
+            "id": message_id,
+            "sender": headers.get("From", ""),
+            "subject": headers.get("Subject", ""),
+            "date": date_str,
+            "body": body,
+            "snippet": msg.get("snippet", "")
+        })
+        
+    except Exception as e:
+        logger.error(f"View email error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # ---------------- Inbox ----------------
 
 @app.route("/inbox")
@@ -360,7 +428,7 @@ def scan_emails():
 
 # ---------------- All Mail ----------------
 
-@app.route("/allmail")
+@app.route("/api/allmail")
 @require_auth
 def all_mail():
     try:
@@ -368,9 +436,12 @@ def all_mail():
         if not service:
             return handle_error("Gmail unavailable", 500, False)
 
+        page_token = request.args.get("pageToken")
+        
         results = service.users().messages().list(
             userId="me",
-            maxResults=50
+            maxResults=50,
+            pageToken=page_token
         ).execute()
 
         from utils.database import get_db_connection
@@ -427,84 +498,7 @@ def all_mail():
         return handle_error(e, 500, False)
 
 
-@app.route("/api/allmail")
-@require_auth
-def api_all_mail():
-    try:
-        service = get_gmail_service()
-        if not service:
-            return jsonify({"error": "Gmail unavailable"}), 500
 
-        page_token = request.args.get('pageToken')
-        if not page_token or page_token == 'undefined':
-            page_token = None
-        
-        results = service.users().messages().list(
-            userId="me",
-            maxResults=50,
-            pageToken=page_token,
-            includeSpamTrash=True 
-        ).execute()
-
-        emails = []
-        for m in results.get("messages", []):
-            try:
-                msg = service.users().messages().get(
-                    userId="me",
-                    id=m["id"],
-                    format="metadata",
-                    metadataHeaders=["From", "Subject"]
-                ).execute()
-
-                headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
-                
-                label_ids = msg.get("labelIds", [])
-                starred = "STARRED" in label_ids
-                flagged = "IMPORTANT" in label_ids
-                
-                # Check DB for phishing status
-                is_phishing = False
-                confidence = 0
-                scanned = False
-                with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT phishing, confidence FROM email_logs WHERE message_id = ?",
-                        (m["id"],)
-                    )
-                    row = cursor.fetchone()
-                    if row:
-                        is_phishing = bool(row[0])
-                        confidence = row[1] or 0
-                        scanned = True
-
-                emails.append({
-                    "id": m["id"],
-                    "sender": headers.get("From", "Unknown"),
-                    "subject": headers.get("Subject", "(No Subject)"),
-                    "body": msg.get("snippet", ""),
-                    "starred": starred,
-                    "flagged": flagged,
-                    "is_phishing": is_phishing,
-                    "confidence": int(confidence * 100) if confidence else None,
-                    "scanned": scanned
-                })
-            except Exception as inner_e:
-                logger.warning(f"Failed to fetch message details for {m['id']}: {inner_e}")
-                continue
-            
-        return jsonify({
-            "emails": emails,
-            "nextPageToken": results.get("nextPageToken")
-        })
-
-    except Exception as e:
-        logger.error(f"API All Mail Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-    except Exception as e:
-        logger.error(e)
-        return handle_error(e, 500, False)
 @app.route("/api/toggle-star", methods=["POST"])
 @require_auth
 def toggle_star_api():

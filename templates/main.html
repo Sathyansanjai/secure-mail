@@ -1,87 +1,93 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smail - Secure Mail</title>
 
     <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ range(1, 10000) | random }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+
 <body class="main-app">
 
-<!-- ================= TOP NAVBAR ================= -->
-<nav class="top-navbar">
-    <div class="nav-left">
-        <button class="menu-toggle" id="menuToggle">
-            <i class="fas fa-bars"></i>
-        </button>
-        <div class="app-brand">
-            <i class="fas fa-shield-alt"></i>
-            <span>Smail</span>
-        </div>
-    </div>
-
-    <div class="nav-center">
-        <div class="search-bar">
-            <i class="fas fa-search"></i>
-            <input type="text" placeholder="Search emails..." id="searchInput">
-        </div>
-    </div>
-
-    <div class="nav-right">
-        <button class="icon-btn" title="Refresh" onclick="refreshPage()">
-            <i class="fas fa-sync-alt"></i>
-        </button>
-
-        <div class="user-profile">
-            <img src="https://ui-avatars.com/api/?name={{ user_email }}&background=667eea&color=fff">
-            <span>{{ user_email }}</span>
+    <!-- ================= TOP NAVBAR ================= -->
+    <nav class="top-navbar">
+        <div class="nav-left">
+            <button class="menu-toggle" id="menuToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="app-brand">
+                <i class="fas fa-shield-alt"></i>
+                <span>Smail</span>
+            </div>
         </div>
 
-        <a href="/logout" class="icon-btn logout-btn" title="Logout">
-            <i class="fas fa-sign-out-alt"></i>
-        </a>
-    </div>
-</nav>
-
-<!-- ================= SIDEBAR ================= -->
-<aside class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-        <button class="compose-btn" id="composeBtn">
-            <i class="fas fa-plus"></i>
-            <span>Compose</span>
-        </button>
-    </div>
-
-    <div class="sidebar-menu">
-        <a href="javascript:void(0)" class="menu-item active" data-page="inbox">Inbox <span class="badge" id="inbox-count">0</span></a>
-        <a href="javascript:void(0)" class="menu-item" data-page="allmail">All Mail <span class="badge" id="allmail-count">0</span></a>
-        <a href="javascript:void(0)" class="menu-item" data-page="phishing">Phishing Attacks <span class="badge danger" id="phishing-count">0</span></a>
-        <a href="javascript:void(0)" class="menu-item" data-page="trash">Trash</a>
-
-        <div class="menu-divider"></div>
-
-        <div class="stats-widget">
-            <h4>Protection Stats</h4>
-            <div class="stat-item">Total Emails <strong id="stat-total">0</strong></div>
-            <div class="stat-item">Safe Emails <strong id="stat-safe" class="text-success">0</strong></div>
-            <div class="stat-item">Threats Blocked <strong id="stat-phishing" class="text-danger">0</strong></div>
+        <div class="nav-center">
+            <div class="search-bar">
+                <i class="fas fa-search"></i>
+                <input type="text" placeholder="Search emails..." id="searchInput">
+            </div>
         </div>
-    </div>
-</aside>
 
-<!-- ================= MAIN CONTENT ================= -->
-<main class="main-content" id="mainContent">
-    <div class="loading-spinner">
-        <i class="fas fa-circle-notch fa-spin"></i>
-        <p>Loading...</p>
-    </div>
-</main>
+        <div class="nav-right">
+            <button class="icon-btn" title="Refresh" onclick="refreshPage()">
+                <i class="fas fa-sync-alt"></i>
+            </button>
 
-<!-- ================= JS ================= -->
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+            <div class="user-profile">
+                <img src="https://ui-avatars.com/api/?name={{ user_email }}&background=667eea&color=fff">
+                <span>{{ user_email }}</span>
+            </div>
+
+            <a href="/logout" class="icon-btn logout-btn" title="Logout">
+                <i class="fas fa-sign-out-alt"></i>
+            </a>
+        </div>
+    </nav>
+
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <button class="compose-btn" id="composeBtn">
+                <i class="fas fa-plus"></i>
+                <span>Compose</span>
+            </button>
+        </div>
+
+        <div class="sidebar-menu">
+            <a href="javascript:void(0)" class="menu-item active" data-page="inbox">Inbox <span class="badge"
+                    id="inbox-count">0</span></a>
+            <a href="javascript:void(0)" class="menu-item" data-page="allmail">All Mail <span class="badge"
+                    id="allmail-count">0</span></a>
+            <a href="javascript:void(0)" class="menu-item" data-page="phishing">Phishing Attacks <span
+                    class="badge danger" id="phishing-count">0</span></a>
+            <a href="javascript:void(0)" class="menu-item" data-page="trash">Trash</a>
+
+            <div class="menu-divider"></div>
+
+            <div class="stats-widget">
+                <h4>Protection Stats</h4>
+                <div class="stat-item">Total Emails <strong id="stat-total">0</strong></div>
+                <div class="stat-item">Safe Emails <strong id="stat-safe" class="text-success">0</strong></div>
+                <div class="stat-item">Threats Blocked <strong id="stat-phishing" class="text-danger">0</strong></div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ================= MAIN CONTENT ================= -->
+    <main class="main-content" id="mainContent">
+        <div class="loading-spinner">
+            <i class="fas fa-circle-notch fa-spin"></i>
+            <p>Loading...</p>
+        </div>
+    </main>
+
+    <!-- ================= JS ================= -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 
 </body>
+
 </html>

@@ -15,7 +15,7 @@ function initApp() {
         item.addEventListener("click", e => {
             e.preventDefault();
             const page = item.dataset.page;
-            
+
             // Immediate visual feedback
             item.style.opacity = "0.7";
             item.style.pointerEvents = "none";
@@ -27,10 +27,10 @@ function initApp() {
 
             // Load page
             if (page === "inbox") loadPage("/inbox");
-            if (page === "allmail") loadPage("/all-mail");
+            if (page === "allmail") loadPage("/allmail");
             if (page === "trash") loadPage("/trash");
             if (page === "phishing") loadPage("/phishing-logs");
-            
+
             // Restore visual state after a short delay
             setTimeout(() => {
                 item.style.opacity = "1";
@@ -62,24 +62,24 @@ function initApp() {
             // Immediate visual feedback
             refreshBtn.style.transform = "rotate(360deg)";
             refreshBtn.style.transition = "transform 0.5s ease";
-            
+
             const activePage =
                 document.querySelector(".menu-item.active")?.dataset.page || "inbox";
 
             if (activePage === "inbox") loadPage("/inbox", false); // Silent refresh
             if (activePage === "trash") loadPage("/trash", false);
             if (activePage === "phishing") loadPage("/phishing-logs", false);
-            if (activePage === "allmail") loadPage("/all-mail", false);
+            if (activePage === "allmail") loadPage("/allmail", false);
 
             loadStats();
-            
+
             // Reset rotation after animation
             setTimeout(() => {
                 refreshBtn.style.transform = "rotate(0deg)";
             }, 500);
         });
     }
-    
+
     // Helper function for refresh
     function refreshPage() {
         const refreshBtn = document.querySelector('.icon-btn[title="Refresh"]');
@@ -96,7 +96,7 @@ function initApp() {
 
     // Real-time email checking (every 5 seconds)
     let emailCheckInterval = setInterval(checkNewEmails, 5000);
-    
+
     // Check immediately on load
     setTimeout(checkNewEmails, 1000);
 
@@ -106,7 +106,7 @@ function initApp() {
             document.querySelector(".menu-item.active")?.dataset.page || "inbox";
 
         if (activePage === "inbox") loadPage("/inbox", false); // false = silent refresh
-        if (activePage === "allmail") loadPage("/all-mail", false);
+        if (activePage === "allmail") loadPage("/allmail", false);
         if (activePage === "trash") loadPage("/trash", false);
         if (activePage === "phishing") loadPage("/phishing-logs", false);
 
@@ -114,13 +114,13 @@ function initApp() {
     }, 30000);
 
     // Listen for page loaded events to reinitialize components
-    window.addEventListener('pageLoaded', function(e) {
+    window.addEventListener('pageLoaded', function (e) {
         const url = e.detail.url;
         console.log('Page loaded:', url);
-        
+
         // Reinitialize search if needed
         setupSearch();
-        
+
         // If it's compose page, ensure form is ready
         if (url.includes('/compose')) {
             // Compose form initialization is handled in compose.html script
@@ -137,7 +137,7 @@ function loadPage(url, showLoading = true) {
         // Show minimal loading indicator for faster perceived performance
         main.style.opacity = "0.5";
         main.style.transition = "opacity 0.2s";
-        
+
         // Only show full spinner if loading takes more than 300ms
         spinnerTimeout = setTimeout(() => {
             main.innerHTML = `
@@ -159,7 +159,7 @@ function loadPage(url, showLoading = true) {
     })
         .then(res => {
             if (spinnerTimeout) clearTimeout(spinnerTimeout);
-            
+
             // Handle redirects (like authentication redirects)
             if (res.redirected) {
                 // If redirected to login, reload the page
@@ -168,7 +168,7 @@ function loadPage(url, showLoading = true) {
                     return Promise.reject(new Error('Redirected to login'));
                 }
             }
-            
+
             // Get response text first to check if it's HTML error content
             return res.text().then(text => {
                 if (!res.ok) {
@@ -194,15 +194,15 @@ function loadPage(url, showLoading = true) {
             if (!html) {
                 throw new Error("Empty response from server");
             }
-            
+
             // Check if this is an error response (contains error-container)
-            const isErrorResponse = html.includes('error-container') || 
-                                  html.includes('Session Expired') ||
-                                  html.includes('Gmail service unavailable');
-            
+            const isErrorResponse = html.includes('error-container') ||
+                html.includes('Session Expired') ||
+                html.includes('Gmail service unavailable');
+
             main.innerHTML = html;
             main.style.opacity = "1";
-            
+
             // Only execute scripts and trigger events if it's not an error
             if (!isErrorResponse) {
                 // Execute any scripts in the loaded HTML
@@ -215,7 +215,7 @@ function loadPage(url, showLoading = true) {
                     newScript.appendChild(document.createTextNode(oldScript.innerHTML));
                     oldScript.parentNode.replaceChild(newScript, oldScript);
                 });
-                
+
                 // Trigger a custom event for page-specific initialization
                 window.dispatchEvent(new CustomEvent('pageLoaded', { detail: { url } }));
             } else {
@@ -229,31 +229,31 @@ function loadPage(url, showLoading = true) {
         .catch(err => {
             if (spinnerTimeout) clearTimeout(spinnerTimeout);
             console.error("Error loading page:", err);
-            
+
             if (showLoading) {
                 // Check if the error response contains HTML (from backend error handling)
                 // If it's a network error, show our custom error UI
-                const isNetworkError = err.message.includes('Failed to fetch') || 
-                                     err.message.includes('NetworkError') ||
-                                     err.message.includes('Network error') ||
-                                     err.message.includes('TypeError');
-                
+                const isNetworkError = err.message.includes('Failed to fetch') ||
+                    err.message.includes('NetworkError') ||
+                    err.message.includes('Network error') ||
+                    err.message.includes('TypeError');
+
                 // Check for authentication/session errors
-                const isAuthError = err.message.includes('401') || 
-                                  err.message.includes('Unauthorized') ||
-                                  err.message.includes('Session Expired') ||
-                                  err.message.includes('Redirected to login');
-                
+                const isAuthError = err.message.includes('401') ||
+                    err.message.includes('Unauthorized') ||
+                    err.message.includes('Session Expired') ||
+                    err.message.includes('Redirected to login');
+
                 if (isNetworkError || isAuthError) {
                     // Show a better error message with retry option
                     const errorTitle = isAuthError ? "Session Expired" : "Connection Error";
-                    const errorMessage = isAuthError 
+                    const errorMessage = isAuthError
                         ? "Your session has expired or authentication failed. Please log in again."
                         : "Unable to connect to the server. Please check your connection and try again.";
-                    const errorList = isAuthError 
+                    const errorList = isAuthError
                         ? '<li>Your Google OAuth token has expired</li><li>Please log out and log back in</li>'
                         : '<li>Check your internet connection</li><li>Server may be temporarily unavailable</li><li>Try refreshing the page</li>';
-                    
+
                     main.innerHTML = `
                         <div class="error-container">
                             <div class="error-icon">
@@ -322,12 +322,12 @@ function loadStats() {
             const safeEl = document.getElementById("stat-safe");
             const phishingEl = document.getElementById("stat-phishing");
             const phishingCountEl = document.getElementById("phishing-count");
-            
+
             if (totalEl) totalEl.textContent = data.total ?? 0;
             if (safeEl) safeEl.textContent = data.safe ?? 0;
             if (phishingEl) phishingEl.textContent = data.phishing ?? 0;
             if (phishingCountEl) phishingCountEl.textContent = data.phishing ?? 0;
-            
+
             const inboxCount = document.getElementById("inbox-count");
             if (inboxCount) inboxCount.textContent = data.safe ?? 0;
             const allMailCount = document.getElementById("allmail-count");
@@ -365,8 +365,8 @@ function filterEmails(query) {
 
         card.style.display =
             sender.includes(query) ||
-            subject.includes(query) ||
-            body.includes(query)
+                subject.includes(query) ||
+                body.includes(query)
                 ? "flex"
                 : "none";
     });
@@ -405,14 +405,14 @@ function checkNewEmails() {
         })
         .then(data => {
             if (!data || !data.new_emails || data.count === 0) return;
-            
+
             // Process each new email (only phishing emails are returned now)
             data.new_emails.forEach(email => {
                 // Only show notification if we haven't notified about this email before
                 if (!notifiedEmails.has(email.id)) {
                     notifiedEmails.add(email.id);
                     showEmailNotification(email);
-                    
+
                     // Auto-refresh trash/phishing logs if phishing detected
                     const activePage = document.querySelector(".menu-item.active")?.dataset.page;
                     if (email.is_phishing) {
@@ -426,7 +426,7 @@ function checkNewEmails() {
                     }
                 }
             });
-            
+
             // Update stats
             loadStats();
         })
@@ -434,8 +434,8 @@ function checkNewEmails() {
             // Only log errors, don't show to user (this runs every 5 seconds)
             // Network errors are expected if server is temporarily unavailable
             // Session expired errors are handled above
-            if (err.message && 
-                !err.message.includes('Failed to fetch') && 
+            if (err.message &&
+                !err.message.includes('Failed to fetch') &&
                 !err.message.includes('Session expired')) {
                 console.error("Error checking new emails:", err);
             }
@@ -448,15 +448,15 @@ function showEmailNotification(email) {
     if (!email.is_phishing) {
         return;
     }
-    
+
     // Create notification element
     const notification = document.createElement("div");
     notification.className = "email-notification phishing";
-    
+
     const icon = "fa-exclamation-triangle";
     const title = "⚠️ Phishing Email Detected!";
     const message = `"${email.subject}" from ${email.sender} was moved to Trash`;
-    
+
     notification.innerHTML = `
         <div class="notification-content">
             <div class="notification-icon">
@@ -473,7 +473,7 @@ function showEmailNotification(email) {
             </button>
         </div>
     `;
-    
+
     // Add to notification container
     let container = document.getElementById("notificationContainer");
     if (!container) {
@@ -481,18 +481,18 @@ function showEmailNotification(email) {
         container.id = "notificationContainer";
         document.body.appendChild(container);
     }
-    
+
     container.appendChild(notification);
-    
+
     // Animate in
     setTimeout(() => notification.classList.add("show"), 10);
-    
+
     // Auto-remove after 10 seconds (longer for phishing alerts)
     setTimeout(() => {
         notification.classList.remove("show");
         setTimeout(() => notification.remove(), 300);
     }, 10000);
-    
+
     // Browser notification (if permission granted)
     if ("Notification" in window && Notification.permission === "granted") {
         new Notification(title, {

@@ -41,15 +41,15 @@
             </div>
 
             <h4 class="email-subject">{{ email.subject }}</h4>
+            <div class="email-meta" style="font-size: 0.85rem; color: #666; margin-bottom: 5px;">
+                <i class="far fa-clock"></i> {{ email.date }}
+            </div>
             <p class="email-preview">{{ email.body }}</p>
 
             {% if email.is_phishing %}
             <div class="phishing-info">
                 <p><strong>Reason:</strong> {{ email.reason }}</p>
                 <p><strong>Action:</strong> {{ email.action }}</p>
-                {% if email.date %}
-                <p><strong>Date:</strong> {{ email.date }}</p>
-                {% endif %}
             </div>
 
             <!-- XAI Explanation Section -->
