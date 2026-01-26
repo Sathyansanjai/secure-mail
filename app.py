@@ -428,7 +428,7 @@ def scan_emails():
 
 # ---------------- All Mail ----------------
 
-@app.route("/api/allmail")
+@app.route("/allmail")
 @require_auth
 def all_mail():
     try:
@@ -586,6 +586,23 @@ def trash():
                             logger.warning(f"Error generating explanation HTML for message {m['id']}: {e}")
                             explanation_html = ""
             
+            # Format date nicely
+            date_str = ""
+            internal_date = msg.get("internalDate")
+            if internal_date:
+                try:
+                    ts = int(internal_date) / 1000
+                    date_str = datetime.fromtimestamp(ts).strftime('%b %d, %Y %I:%M %p')
+                except:
+                    pass
+            
+            if not date_str:
+                 # Fallback to header extraction
+                 header_date = headers.get("Date", "")
+                 if header_date:
+                     # Simple cleanup of header date if complex parsing isn't available
+                     date_str = header_date[:25] # Truncate likely-long header dates
+
             emails.append({
                 "id": m["id"],
                 "sender": headers.get("From", ""),
@@ -596,7 +613,7 @@ def trash():
                 "reason": reason,
                 "action": action,
                 "explanation_html": explanation_html,
-                "date": datetime.fromtimestamp(int(msg.get("internalDate", 0))/1000).strftime('%Y-%m-%d %H:%M') if msg.get("internalDate") else ""
+                "date": date_str
             })
 
         return render_template("trash.html", emails=emails)

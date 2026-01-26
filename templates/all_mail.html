@@ -59,9 +59,10 @@
 
 {% if next_page_token %}
 <div class="load-more-container" style="text-align: center; margin: 20px 0;">
-    <a href="{{ url_for('all_mail', pageToken=next_page_token) }}" class="btn btn-primary" id="loadMoreBtn">
+    <button class="btn btn-primary" id="loadMoreBtn"
+        onclick="loadPage('{{ url_for('all_mail', pageToken=next_page_token) }}')">
         <i class="fas fa-chevron-down"></i> Load More
-    </a>
+    </button>
 </div>
 {% endif %}
 
