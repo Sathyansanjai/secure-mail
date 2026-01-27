@@ -102,8 +102,12 @@ function initApp() {
 
     // Auto refresh every 30 seconds (reduced frequency for better performance)
     setInterval(() => {
-        const activePage =
-            document.querySelector(".menu-item.active")?.dataset.page || "inbox";
+        const activeItem = document.querySelector(".menu-item.active");
+
+        // If we are on compose page (no active menu item) or any other non-listed page, DO NOT redirect
+        if (!activeItem) return;
+
+        const activePage = activeItem.dataset.page;
 
         if (activePage === "inbox") loadPage("/inbox", false); // false = silent refresh
         if (activePage === "allmail") loadPage("/allmail", false);
@@ -453,25 +457,29 @@ function showEmailNotification(email) {
     const notification = document.createElement("div");
     notification.className = "email-notification phishing";
 
-    const icon = "fa-exclamation-triangle";
-    const title = "⚠️ Phishing Email Detected!";
-    const message = `"${email.subject}" from ${email.sender} was moved to Trash`;
+    const icon = "fa-shield-virus";
+    const title = "Threat Detected";
+    const message = `We moved a suspicious email from <strong>${email.sender}</strong> to Trash.`;
 
     notification.innerHTML = `
-        <div class="notification-content">
-            <div class="notification-icon">
-                <i class="fas ${icon}"></i>
-            </div>
-            <div class="notification-text">
-                <strong>${title}</strong>
-                <p>${message}</p>
-                <small>Confidence: ${email.confidence}% - ${email.reason || 'Phishing detected'}</small>
-                <small style="display: block; margin-top: 5px; color: #666;">Check Trash for AI explanation</small>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
+        <div class="notification-icon">
+            <i class="fas ${icon}"></i>
         </div>
+        <div class="notification-content">
+            <div class="notification-header">
+                <strong>${title}</strong>
+                <span class="notification-time">Just now</span>
+            </div>
+            <p class="notification-message">${message}</p>
+            <div class="notification-meta">
+                <span class="confidence-badge">
+                    <i class="fas fa-robot"></i> ${email.confidence}% Confidence
+                </span>
+            </div>
+        </div>
+        <button class="notification-close" onclick="this.parentElement.remove()">
+            <i class="fas fa-times"></i>
+        </button>
     `;
 
     // Add to notification container
@@ -482,23 +490,24 @@ function showEmailNotification(email) {
         document.body.appendChild(container);
     }
 
-    container.appendChild(notification);
+    // Prepend to show newest at top
+    container.insertBefore(notification, container.firstChild);
 
     // Animate in
-    setTimeout(() => notification.classList.add("show"), 10);
+    requestAnimationFrame(() => notification.classList.add("show"));
 
-    // Auto-remove after 10 seconds (longer for phishing alerts)
+    // Auto-remove after 10 seconds
     setTimeout(() => {
         notification.classList.remove("show");
-        setTimeout(() => notification.remove(), 300);
+        setTimeout(() => notification.remove(), 400); // Wait for transition
     }, 10000);
 
     // Browser notification (if permission granted)
     if ("Notification" in window && Notification.permission === "granted") {
         new Notification(title, {
-            body: message + ` (Confidence: ${email.confidence}%)`,
+            body: `Phishing detected from ${email.sender}. Moved to trash.`,
             icon: "/static/favicon.ico",
-            tag: email.id, // Use email ID as tag to prevent duplicate browser notifications
+            tag: email.id,
             requireInteraction: false
         });
     }

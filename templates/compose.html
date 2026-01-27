@@ -42,7 +42,7 @@
 </div>
 
 <script>
-    document.addEventListener("DOMContentLoaded", function () {
+    (function () {
         const form = document.getElementById("composeForm");
         if (!form) return;
 
@@ -101,5 +101,5 @@
                     submitBtn.innerHTML = originalText;
                 });
         });
-    });
+    })();
 </script>

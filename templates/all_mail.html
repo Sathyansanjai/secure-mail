@@ -59,10 +59,10 @@
 
 {% if next_page_token %}
 <div class="load-more-container" style="text-align: center; margin: 20px 0;">
-    <button class="btn btn-primary" id="loadMoreBtn"
-        onclick="loadPage('{{ url_for('all_mail', pageToken=next_page_token) }}')">
+    <button class="btn btn-primary" id="loadMoreBtn" data-url="{{ url_for('all_mail', pageToken=next_page_token) }}">
         <i class="fas fa-chevron-down"></i> Load More
     </button>
+
 </div>
 {% endif %}
 
@@ -83,7 +83,7 @@
         if (flagBtn) toggleFlag(flagBtn);
     });
 
-    /* ---------------- FUNCTIONS ---------------- */
+    /* --------------- FUNCTIONS ---------------- */
 
     function toggleStar(btn) {
         const icon = btn.querySelector("i");

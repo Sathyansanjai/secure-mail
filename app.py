@@ -438,46 +438,86 @@ def all_mail():
 
         page_token = request.args.get("pageToken")
         
+        # 1. List messages (metadata only)
         results = service.users().messages().list(
             userId="me",
             maxResults=50,
             pageToken=page_token
         ).execute()
 
+        messages = results.get("messages", [])
+        if not messages:
+            return render_template("all_mail.html", emails=[], next_page_token=None)
+
+        # 2. Prepare Batch Request for full details
+        batch = service.new_batch_http_request()
+        message_details = {}
+
+        def batch_callback(request_id, response, exception):
+            if exception:
+                logger.error(f"Error for msg {request_id}: {exception}")
+            else:
+                message_details[request_id] = response
+
+        for m in messages:
+            batch.add(
+                service.users().messages().get(
+                    userId="me",
+                    id=m["id"],
+                    format="metadata",
+                    metadataHeaders=["From", "Subject"]
+                ),
+                callback=batch_callback,
+                request_id=m["id"]
+            )
+        
+        batch.execute()
+
+        # 3. Batch DB Query for Phishing Status
         from utils.database import get_db_connection
         
-        emails = []
-        for m in results.get("messages", []):
-            msg = service.users().messages().get(
-                userId="me",
-                id=m["id"],
-                format="metadata",
-                metadataHeaders=["From", "Subject"]
-            ).execute()
+        # Collect all message IDs
+        msg_ids = [m["id"] for m in messages]
+        phishing_map = {}
+        
+        if msg_ids:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                # Create placeholders for IN clause
+                placeholders = ','.join(['?'] * len(msg_ids))
+                query = f"SELECT message_id, phishing, confidence FROM email_logs WHERE message_id IN ({placeholders})"
+                cursor.execute(query, msg_ids)
+                rows = cursor.fetchall()
+                
+                for row in rows:
+                    phishing_map[row[0]] = {
+                        "is_phishing": bool(row[1]),
+                        "confidence": row[2] or 0
+                    }
 
-            headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+        # 4. Assemble Final List
+        emails = []
+        for m in messages:
+            msg_id = m["id"]
+            if msg_id not in message_details:
+                continue
+                
+            msg = message_details[msg_id]
+            headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
             
-            # Check if starred or flagged
+            # Check labels
             label_ids = msg.get("labelIds", [])
             starred = "STARRED" in label_ids
             flagged = "IMPORTANT" in label_ids
             
-            # Check DB for phishing status
-            is_phishing = False
-            confidence = 0
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT phishing, confidence FROM email_logs WHERE message_id = ?",
-                    (m["id"],)
-                )
-                row = cursor.fetchone()
-                if row:
-                    is_phishing = bool(row[0])
-                    confidence = row[1] or 0
+            # Get phishing status
+            p_status = phishing_map.get(msg_id, {})
+            is_phishing = p_status.get("is_phishing", False)
+            confidence = p_status.get("confidence", 0)
+            scanned = msg_id in phishing_map
             
             emails.append({
-                "id": m["id"],
+                "id": msg_id,
                 "sender": headers.get("From", ""),
                 "subject": headers.get("Subject", ""),
                 "body": msg.get("snippet", ""),
@@ -485,7 +525,7 @@ def all_mail():
                 "flagged": flagged,
                 "is_phishing": is_phishing,
                 "confidence": int(confidence * 100) if confidence else None,
-                "scanned": row is not None
+                "scanned": scanned
             })
 
         # Check for next page token
@@ -494,7 +534,7 @@ def all_mail():
         return render_template("all_mail.html", emails=emails, next_page_token=next_page_token)
 
     except Exception as e:
-        logger.error(e)
+        logger.error(f"All Mail Error: {e}", exc_info=True)
         return handle_error(e, 500, False)
 
 
