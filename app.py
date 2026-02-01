@@ -559,9 +559,11 @@ def toggle_flag_api():
 
 # ---------------- Trash ----------------
 
-@app.route("/trash")
+# ---------------- Starred Mail ----------------
+
+@app.route("/starred")
 @require_auth
-def trash():
+def starred_mail():
     try:
         service = get_gmail_service()
         if not service:
@@ -569,7 +571,68 @@ def trash():
 
         results = service.users().messages().list(
             userId="me",
-            labelIds=["TRASH"],
+            q="is:starred",
+            maxResults=50
+        ).execute()
+
+        emails = []
+        from utils.database import get_db_connection
+        
+        for m in results.get("messages", []):
+            msg = service.users().messages().get(
+                userId="me",
+                id=m["id"],
+                format="metadata",
+                metadataHeaders=["From", "Subject", "Date"]
+            ).execute()
+
+            headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+            
+            # Check DB for phishing status
+            is_phishing = False
+            confidence = 0
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT phishing, confidence FROM email_logs WHERE message_id = ?",
+                    (m["id"],)
+                )
+                row = cursor.fetchone()
+                if row:
+                    is_phishing = bool(row[0])
+                    confidence = row[1] or 0
+            
+            emails.append({
+                "id": m["id"],
+                "sender": headers.get("From", ""),
+                "subject": headers.get("Subject", ""),
+                "body": msg.get("snippet", ""),
+                "date": headers.get("Date", ""),
+                "is_phishing": is_phishing,
+                "confidence": int(confidence * 100) if confidence else None,
+                "scanned": row is not None,
+                "starred": True # Since we're in starred view
+            })
+
+        return render_template("inbox.html", emails=emails, title="Starred Mails")
+
+    except Exception as e:
+        logger.error(e)
+        return handle_error(e, 500, False)
+
+# ---------------- Sent Mail ----------------
+
+@app.route("/sent")
+@require_auth
+def sent_mail():
+    try:
+        service = get_gmail_service()
+        if not service:
+            return handle_error("Gmail unavailable", 500, False)
+
+        results = service.users().messages().list(
+            userId="me",
+            q="is:sent",
             maxResults=50
         ).execute()
 
@@ -579,88 +642,83 @@ def trash():
                 userId="me",
                 id=m["id"],
                 format="metadata",
-                metadataHeaders=["From", "Subject"]
+                metadataHeaders=["From", "To", "Subject", "Date"]
             ).execute()
 
             headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
-            body = msg.get("snippet", "")
             
-            # Check database for phishing info
-            from utils.database import get_db_connection
-            import json
-            from security.ml_detector import get_explanation_html
-            
-            is_phishing = False
-            confidence = 0
-            reason = ""
-            explanation_html = ""
-            action = ""
-            
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT phishing, confidence, reason, explanation, action FROM email_logs WHERE message_id = ?",
-                    (m["id"],)
-                )
-                row = cursor.fetchone()
-                if row:
-                    is_phishing = bool(row[0])
-                    confidence = row[1] or 0
-                    reason = row[2] or ""
-                    explanation = row[3]
-                    action = row[4] or ""
-                    if explanation:
-                        try:
-                            # Parse explanation JSON
-                            if isinstance(explanation, str):
-                                exp_data = json.loads(explanation) if explanation.strip().startswith('{') else {}
-                            else:
-                                exp_data = explanation if isinstance(explanation, dict) else {}
-                            
-                            # Generate HTML explanation if we have valid data
-                            if exp_data and (exp_data.get('phishing_words') or exp_data.get('safe_words')):
-                                explanation_html = get_explanation_html(exp_data)
-                            else:
-                                logger.debug(f"No valid explanation data for message {m['id']}")
-                        except Exception as e:
-                            logger.warning(f"Error generating explanation HTML for message {m['id']}: {e}")
-                            explanation_html = ""
-            
-            # Format date nicely
-            date_str = ""
-            internal_date = msg.get("internalDate")
-            if internal_date:
-                try:
-                    ts = int(internal_date) / 1000
-                    date_str = datetime.fromtimestamp(ts).strftime('%b %d, %Y %I:%M %p')
-                except:
-                    pass
-            
-            if not date_str:
-                 # Fallback to header extraction
-                 header_date = headers.get("Date", "")
-                 if header_date:
-                     # Simple cleanup of header date if complex parsing isn't available
-                     date_str = header_date[:25] # Truncate likely-long header dates
-
             emails.append({
                 "id": m["id"],
-                "sender": headers.get("From", ""),
+                "sender": f"To: {headers.get('To', '')}",
                 "subject": headers.get("Subject", ""),
-                "body": body,
-                "is_phishing": is_phishing,
-                "confidence": int(confidence * 100) if confidence else 0,
-                "reason": reason,
-                "action": action,
-                "explanation_html": explanation_html,
-                "date": date_str
+                "body": msg.get("snippet", ""),
+                "date": headers.get("Date", ""),
+                "is_sent": True
             })
 
-        return render_template("trash.html", emails=emails)
+        return render_template("inbox.html", emails=emails, title="Sent Mails")
 
     except Exception as e:
         logger.error(e)
         return handle_error(e, 500, False)
+
+# ---------------- API: Mail Actions ----------------
+
+@app.route("/api/archive-email", methods=["POST"])
+@require_auth
+def api_archive_email():
+    try:
+        data = request.get_json()
+        message_id = data.get("message_id")
+        if not message_id:
+            return jsonify({"error": "Message ID required"}), 400
+            
+        service = get_gmail_service()
+        # Archive = remove INBOX label
+        service.users().messages().modify(
+            userId="me",
+            id=message_id,
+            body={"removeLabelIds": ["INBOX"]}
+        ).execute()
+        
+        return jsonify({"message": "Successfully archived email"})
+    except Exception as e:
+        logger.error(f"Archive error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/restore-email", methods=["POST"])
+@require_auth
+def api_restore_email():
+    try:
+        data = request.get_json()
+        message_id = data.get("message_id")
+        if not message_id:
+            return jsonify({"error": "Message ID required"}), 400
+            
+        service = get_gmail_service()
+        restore_from_trash(service, message_id)
+        
+        return jsonify({"message": "Successfully restored email"})
+    except Exception as e:
+        logger.error(f"Restore error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/delete-email", methods=["POST"])
+@require_auth
+def api_delete_email():
+    try:
+        data = request.get_json()
+        message_id = data.get("message_id")
+        if not message_id:
+            return jsonify({"error": "Message ID required"}), 400
+            
+        service = get_gmail_service()
+        delete_permanently(service, message_id)
+        
+        return jsonify({"message": "Successfully deleted email permanently"})
+    except Exception as e:
+        logger.error(f"Delete error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ---------------- Phishing Logs ----------------
 

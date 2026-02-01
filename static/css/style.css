@@ -849,73 +849,140 @@ button {
 }
 
 /* ================= AI EXPLANATION & PHISHING ================= */
-.xai-explanation {
-    margin-top: 15px;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 8px;
-    border: 1px solid #e0e0e0;
+/* ================= PREMIUM AI EXPLANATION & XAI ================= */
+.xai-explanation.premium-card {
+    margin-top: 20px;
+    padding: 20px;
+    background: #ffffff;
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s ease;
 }
 
-.xai-explanation h4 {
+.xai-explanation.premium-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(to bottom, var(--primary), var(--secondary));
+}
+
+.xai-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.xai-header h4 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
     color: var(--text-main);
-    margin-bottom: 15px;
-    font-size: 1rem;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+}
+
+.xai-header h4 i {
+    color: var(--primary);
+    filter: drop-shadow(0 0 5px rgba(102, 126, 234, 0.3));
+}
+
+.confidence-tag {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--primary);
+    background: rgba(102, 126, 234, 0.1);
+    padding: 4px 10px;
+    border-radius: 20px;
 }
 
 .explanation-section {
-    margin-bottom: 15px;
+    margin-bottom: 20px;
 }
 
 .section-label {
-    font-weight: 600;
-    font-size: 0.9rem;
-    margin-bottom: 8px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
     color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .word-badges {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 12px;
+}
+
+.word-badge-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 80px;
 }
 
 .word-badge {
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.word-badge small {
-    opacity: 0.8;
-    font-size: 0.75rem;
+    padding: 6px 14px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .word-badge.danger {
-    background: #fed7d7;
     color: #c53030;
+    border: 1px solid rgba(229, 62, 62, 0.1);
 }
 
 .word-badge.safe {
-    background: #c6f6d5;
+    background: rgba(56, 161, 105, 0.1);
     color: #2f855a;
+    border: 1px solid rgba(56, 161, 105, 0.1);
 }
 
-.xai-note {
+.weight-bar {
+    height: 4px;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.weight-fill {
+    height: 100%;
+    background: var(--danger);
+    border-radius: 2px;
+    transition: width 1s ease-out;
+}
+
+.xai-footer {
     font-size: 0.8rem;
     color: var(--text-muted);
-    font-style: italic;
     display: flex;
     align-items: center;
-    gap: 5px;
-    margin-top: 10px;
+    gap: 8px;
+    padding-top: 15px;
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    line-height: 1.4;
+}
+
+.xai-footer i {
+    color: var(--primary);
 }
 
 /* Phishing Card Override */
@@ -1079,6 +1146,7 @@ button {
     height: 1px;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
 }
+
 /* Smooth Main Content Transitions */
 #main-content {
     transition: opacity 0.2s ease-in-out;
