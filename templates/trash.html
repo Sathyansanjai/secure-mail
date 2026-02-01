@@ -9,9 +9,9 @@
 <div class="email-list" id="trashList">
     {% if emails|length == 0 %}
     <div class="empty-state">
-        <i class="fas fa-inbox"></i>
+        <i class="fas fa-trash-restore"></i>
         <h3>Trash is empty</h3>
-        <p>No emails are currently in the trash.</p>
+        <p>No messages in your trash folder.</p>
     </div>
     {% else %}
     {% for email in emails %}
@@ -33,9 +33,9 @@
                     Phishing {{ email.confidence }}%
                 </span>
                 {% else %}
-                <span class="email-badge muted">
-                    <i class="fas fa-trash"></i>
-                    Trashed
+                <span class="email-badge safe">
+                    <i class="fas fa-shield-alt"></i>
+                    Verified Safe
                 </span>
                 {% endif %}
             </div>
@@ -46,16 +46,17 @@
             </div>
             <p class="email-preview">{{ email.body }}</p>
 
-            {% if email.is_phishing %}
-            <div class="phishing-info">
-                <p><strong>Reason:</strong> {{ email.reason }}</p>
-                <p><strong>Action:</strong> {{ email.action }}</p>
+            {% if email.reason %}
+            <div class="security-info {% if email.is_phishing %}phishing-variant{% else %}safe-variant{% endif %}">
+                <p><i class="fas {% if email.is_phishing %}fa-shield-virus{% else %}fa-shield-alt{% endif %}"></i>
+                    <strong>Analysis:</strong> {{ email.reason }}
+                </p>
             </div>
+            {% endif %}
 
             <!-- XAI Explanation Section -->
             {% if email.explanation_html %}
             {{ email.explanation_html | safe }}
-            {% endif %}
             {% endif %}
         </div>
 

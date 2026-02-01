@@ -22,41 +22,23 @@ def log_email(sender, subject, phishing, confidence, reason="", action="", expla
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Try with message_id first (newer schema)
-            try:
-                cursor.execute("""
-                    INSERT INTO email_logs
-                    (message_id, sender, receiver, subject, body, phishing, confidence, reason, action, explanation)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    message_id,
-                    sender,
-                    receiver,
-                    subject,
-                    body,
-                    int(phishing),
-                    confidence,
-                    reason,
-                    action,
-                    explanation_json
-                ))
-            except Exception:
-                # Fallback for older DBs without message_id column
-                cursor.execute("""
-                    INSERT INTO email_logs
-                    (sender, receiver, subject, body, phishing, confidence, reason, action, explanation)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    sender,
-                    receiver,
-                    subject,
-                    body,
-                    int(phishing),
-                    confidence,
-                    reason,
-                    action,
-                    explanation_json
-                ))
+            # Use INSERT OR REPLACE to update existing message logs if re-scanned
+            cursor.execute("""
+                INSERT OR REPLACE INTO email_logs
+                (message_id, sender, receiver, subject, body, phishing, confidence, reason, action, explanation)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                message_id,
+                sender,
+                receiver,
+                subject,
+                body,
+                int(phishing),
+                confidence,
+                reason,
+                action,
+                explanation_json
+            ))
             
             conn.commit()
     except Exception as e:

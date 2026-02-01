@@ -1,40 +1,56 @@
 <div class="content-header">
     <h1>
+        {% if title == "Starred Mails" %}
+        <i class="fas fa-star text-warning"></i>
+        {% elif title == "Sent Mails" %}
+        <i class="fas fa-paper-plane text-primary"></i>
+        {% else %}
         <i class="fas fa-inbox"></i>
-        Inbox
+        {% endif %}
+        {{ title or 'Inbox' }}
     </h1>
-    <p class="subtitle">Safe emails only - phishing threats automatically removed</p>
+    <p class="subtitle">
+        {% if title == "Sent Mails" %}
+        Successfully delivered secure communications
+        {% elif title == "Starred Mails" %}
+        Important messages flagged for follow-up
+        {% else %}
+        Safe emails only - phishing threats automatically removed
+        {% endif %}
+    </p>
 </div>
 
 <div class="email-list" id="emailList">
     {% if emails|length == 0 %}
     <div class="empty-state">
         <i class="fas fa-inbox"></i>
-        <h3>No emails in inbox</h3>
-        <p>Your inbox is empty. All phishing emails are automatically filtered out.</p>
+        <h3>No messages found</h3>
+        <p>This folder is currently empty.</p>
     </div>
     {% else %}
     {% for email in emails %}
-    <div class="email-card" data-email-id="{{ email.id }}">
+    <div class="email-card {% if email.is_sent %}sent-variant{% endif %}" data-email-id="{{ email.id }}">
         <div class="email-icon">
+            {% if email.is_sent %}
+            <i class="fas fa-paper-plane"></i>
+            {% elif email.starred %}
+            <i class="fas fa-star text-warning"></i>
+            {% else %}
             <i class="fas fa-envelope"></i>
+            {% endif %}
         </div>
 
         <div class="email-content">
             <div class="email-header">
                 <h3 class="email-sender">{{ email.sender }}</h3>
 
-                {% if email.confidence is not none %}
-                <span class="email-badge safe">
-                    <i class="fas fa-check-circle"></i>
-                    Safe {{ email.confidence }}%
+                {% if email.scanned %}
+                <span class="email-badge {{ 'danger' if email.is_phishing else 'safe' }}">
+                    <i class="fas {{ 'fa-shield-virus' if email.is_phishing else 'fa-shield-alt' }}"></i>
+                    {{ 'Phishing' if email.is_phishing else 'Verified Safe' }}
+                    {% if email.confidence %}({{ email.confidence }}%){% endif %}
                 </span>
-                {% elif email.scanned %}
-                <span class="email-badge safe">
-                    <i class="fas fa-check-circle"></i>
-                    Safe
-                </span>
-                {% else %}
+                {% elif not email.is_sent %}
                 <span class="email-badge muted">
                     <i class="fas fa-hourglass-half"></i>
                     Scanning…
@@ -43,17 +59,29 @@
             </div>
 
             <h4 class="email-subject">{{ email.subject }}</h4>
+            <div class="email-date-mini">{{ email.date }}</div>
             <p class="email-preview">{{ email.body }}</p>
+
+            {% if email.reason %}
+            <div class="security-info {% if email.is_phishing %}phishing-variant{% else %}safe-variant{% endif %}">
+                <p><i class="fas {% if email.is_phishing %}fa-shield-virus{% else %}fa-shield-alt{% endif %}"></i>
+                    <strong>Analysis:</strong> {{ email.reason }}
+                </p>
+            </div>
+            {% endif %}
         </div>
 
         <div class="email-actions">
+            {% if not email.is_sent %}
             <button class="icon-btn star-btn" data-email-id="{{ email.id }}" title="Star">
-                <i class="far fa-star"></i>
+                <i
+                    class="{% if email.starred %}fas{% else %}far{% endif %} fa-star {% if email.starred %}text-warning{% endif %}"></i>
             </button>
 
             <button class="icon-btn archive-btn" data-email-id="{{ email.id }}" title="Archive">
                 <i class="fas fa-archive"></i>
             </button>
+            {% endif %}
 
             <button class="icon-btn delete-btn" data-email-id="{{ email.id }}" title="Delete">
                 <i class="fas fa-trash"></i>
@@ -69,8 +97,7 @@
         /* ---------------- VIEW EMAIL ---------------- */
         const card = e.target.closest(".email-card");
         if (card && !e.target.closest(".icon-btn")) {
-            const viewBtn = card.querySelector('.view-btn');
-            viewEmail(card.dataset.emailId, viewBtn || card);
+            viewEmail(card.dataset.emailId, card);
             return;
         }
 
@@ -90,11 +117,9 @@
         const icon = btn.querySelector("i");
         const starred = icon.classList.contains("fas");
         const originalClass = icon.className;
-        const originalColor = icon.style.color;
 
         // Optimistic update
-        icon.className = starred ? "far fa-star" : "fas fa-star";
-        icon.style.color = starred ? "" : "var(--primary)";
+        icon.className = starred ? "far fa-star" : "fas fa-star text-warning";
         btn.style.pointerEvents = "none";
 
         fetch("/api/toggle-star", {
@@ -111,7 +136,6 @@
             .catch(() => {
                 // Revert
                 icon.className = originalClass;
-                icon.style.color = originalColor;
                 alert("Failed to update star");
             })
             .finally(() => {
@@ -125,7 +149,7 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         }
 
-        fetch("/api/archive-mail", {
+        fetch("/api/archive-email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message_id: emailId })
@@ -152,7 +176,7 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         }
 
-        fetch("/api/delete-mail", {
+        fetch("/api/delete-email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message_id: emailId })

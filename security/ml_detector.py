@@ -152,7 +152,7 @@ def ml_predict(text):
         if prediction == 1:
             reason = KnowledgeSynthesisEngine.synthesize(explanation_data.get('phishing_words', []))
         else:
-            reason = "The communication exhibits structural patterns consistent with authorized business correspondence."
+            reason = "Automated heuristics and linguistic analysis indicate this message maintains a high integrity score. No malicious payloads or social engineering patterns identified."
         
         return bool(prediction), float(pred_confidence), reason, explanation_data
     

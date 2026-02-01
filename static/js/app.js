@@ -27,6 +27,8 @@ function initApp() {
 
             // Load page
             if (page === "inbox") loadPage("/inbox");
+            if (page === "starred") loadPage("/starred");
+            if (page === "sent") loadPage("/sent");
             if (page === "allmail") loadPage("/allmail");
             if (page === "trash") loadPage("/trash");
             if (page === "phishing") loadPage("/phishing-logs");
@@ -67,6 +69,8 @@ function initApp() {
                 document.querySelector(".menu-item.active")?.dataset.page || "inbox";
 
             if (activePage === "inbox") loadPage("/inbox", false); // Silent refresh
+            if (activePage === "starred") loadPage("/starred", false);
+            if (activePage === "sent") loadPage("/sent", false);
             if (activePage === "trash") loadPage("/trash", false);
             if (activePage === "phishing") loadPage("/phishing-logs", false);
             if (activePage === "allmail") loadPage("/allmail", false);
@@ -100,22 +104,25 @@ function initApp() {
     // Check immediately on load
     setTimeout(checkNewEmails, 1000);
 
-    // Auto refresh every 30 seconds (reduced frequency for better performance)
+    // Auto refresh stats and only refresh Active page if it's the Inbox
     setInterval(() => {
         const activeItem = document.querySelector(".menu-item.active");
+        const modalOpen = !!document.querySelector(".email-modal") || !!document.querySelector(".modal-content");
 
-        // If we are on compose page (no active menu item) or any other non-listed page, DO NOT redirect
-        if (!activeItem) return;
+        // Always refresh stats
+        loadStats();
+
+        // Only refresh content if window is focused AND no modal is open
+        if (!document.hasFocus() || modalOpen || !activeItem) return;
 
         const activePage = activeItem.dataset.page;
 
-        if (activePage === "inbox") loadPage("/inbox", false); // false = silent refresh
-        if (activePage === "allmail") loadPage("/allmail", false);
-        if (activePage === "trash") loadPage("/trash", false);
-        if (activePage === "phishing") loadPage("/phishing-logs", false);
+        // Only trigger auto-refresh for Inbox to avoid jumps
+        if (activePage === "inbox") {
+            loadPage("/inbox", false);
+        }
 
-        loadStats();
-    }, 30000);
+    }, 60000);
 
     // Listen for page loaded events to reinitialize components
     window.addEventListener('pageLoaded', function (e) {
@@ -322,20 +329,30 @@ function loadStats() {
         })
         .then(data => {
             if (!data) return;
+
+            // Update counts in sidebar badges
+            const mapping = {
+                "inbox-count": data.inbox,
+                "starred-count": data.starred,
+                "sent-count": data.sent,
+                "allmail-count": data.allmail,
+                "phishing-count": data.phishing,
+                "trash-count": data.trash
+            };
+
+            for (const [id, count] of Object.entries(mapping)) {
+                const el = document.getElementById(id);
+                if (el) el.textContent = count ?? 0;
+            }
+
+            // Update protection stats widgets
             const totalEl = document.getElementById("stat-total");
             const safeEl = document.getElementById("stat-safe");
             const phishingEl = document.getElementById("stat-phishing");
-            const phishingCountEl = document.getElementById("phishing-count");
 
-            if (totalEl) totalEl.textContent = data.total ?? 0;
-            if (safeEl) safeEl.textContent = data.safe ?? 0;
+            if (totalEl) totalEl.textContent = data.total_scanned ?? 0;
+            if (safeEl) safeEl.textContent = data.safe_scanned ?? 0;
             if (phishingEl) phishingEl.textContent = data.phishing ?? 0;
-            if (phishingCountEl) phishingCountEl.textContent = data.phishing ?? 0;
-
-            const inboxCount = document.getElementById("inbox-count");
-            if (inboxCount) inboxCount.textContent = data.safe ?? 0;
-            const allMailCount = document.getElementById("allmail-count");
-            if (allMailCount) allMailCount.textContent = data.total ?? 0;
         })
         .catch(err => {
             // Only log errors, don't show to user (stats are non-critical)
