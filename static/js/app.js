@@ -517,3 +517,59 @@ function showEmailNotification(email) {
 if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission();
 }
+
+
+// Ensure Load More works on dynamic navigation
+window.addEventListener('pageLoaded', function (e) {
+    // Load More functionality for All Mail
+    const valLoadMoreBtn = document.getElementById('loadMoreBtn');
+    if (valLoadMoreBtn) {
+        // Remove existing listener if any (to prevent duplicates)
+        const newBtn = valLoadMoreBtn.cloneNode(true);
+        valLoadMoreBtn.parentNode.replaceChild(newBtn, valLoadMoreBtn);
+
+        newBtn.addEventListener('click', function () {
+            const loadUrl = this.getAttribute('data-url');
+            if (!loadUrl) return;
+
+            const originalHtml = this.innerHTML;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            this.disabled = true;
+
+            fetch(loadUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => response.text())
+                .then(html => {
+                    const temp = document.createElement('div');
+                    temp.innerHTML = html;
+
+                    const newEmails = temp.querySelectorAll('.email-card');
+                    const list = document.getElementById('allMailList');
+                    if (list) {
+                        newEmails.forEach(email => {
+                            email.style.opacity = '0';
+                            list.appendChild(email);
+                            // Micro-animation for new emails
+                            setTimeout(() => {
+                                email.style.transition = 'opacity 0.3s ease';
+                                email.style.opacity = '1';
+                            }, 50);
+                        });
+                    }
+
+                    const nextBtnData = temp.querySelector('#loadMoreBtn');
+                    if (nextBtnData) {
+                        this.setAttribute('data-url', nextBtnData.getAttribute('data-url'));
+                        this.innerHTML = originalHtml;
+                        this.disabled = false;
+                    } else {
+                        this.remove();
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading more:', err);
+                    this.innerHTML = originalHtml;
+                    this.disabled = false;
+                });
+        });
+    }
+});

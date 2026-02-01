@@ -97,9 +97,9 @@ def ml_predict(text):
             if explanation_data and explanation_data.get('phishing_words'):
                 # Use LIME explanation for reason
                 top_words = [w['word'] for w in explanation_data['phishing_words'][:3]]
-                reason = f"Suspicious words detected: {', '.join(top_words)}"
+                reason = f"Suspicious words detected so it can declared into pishing it can declared by this words this  words can also used in most of deepfake mail: {', '.join(top_words)}"
             elif found:
-                reason = f"Suspicious keywords: {', '.join(found[:5])}"
+                reason = f"Suspicious keywords its not accurate but it most of phishing mails have this keywords: {', '.join(found[:5])}"
             else:
                 reason = "ML model flagged as phishing"
         else:
