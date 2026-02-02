@@ -8,10 +8,11 @@ from datetime import datetime
 from auth.google_oauth import get_flow
 from googleapiclient.errors import HttpError
 from google.oauth2.credentials import Credentials
-from security.ml_detector import ml_predict
+from security.ml_detector import ml_predict, get_explanation_html
 from security.auto_del import move_to_trash, restore_from_trash, delete_permanently
 from database.db import init_db
 from database.logs import log_email
+from utils.database import get_db_connection
 from middleware.auth import require_auth, get_gmail_service, parse_credentials_from_session
 from middleware.errors import register_error_handlers, handle_error
 from config import config
@@ -195,7 +196,6 @@ def get_body(payload):
     return ""
 
 def get_email_status(message_id):
-    from utils.database import get_db_connection
     is_phishing = False
     confidence = 0
     scanned = False
@@ -249,13 +249,26 @@ def api_view_email():
             except:
                 date_str = headers.get("Date", "")
 
+        # Get security status
+        is_phishing, confidence, scanned, explanation = get_email_status(message_id)
+        explanation_html = ""
+        if explanation:
+            try:
+                exp_data = json.loads(explanation) if isinstance(explanation, str) else explanation
+                explanation_html = get_explanation_html(exp_data)
+            except: pass
+
         return jsonify({
             "id": message_id,
             "sender": headers.get("From", ""),
             "subject": headers.get("Subject", ""),
             "date": date_str,
             "body": body,
-            "snippet": msg.get("snippet", "")
+            "snippet": msg.get("snippet", ""),
+            "is_phishing": is_phishing,
+            "confidence": int(confidence * 100) if confidence else 0,
+            "scanned": scanned,
+            "explanation_html": explanation_html
         })
         
     except Exception as e:
@@ -278,10 +291,6 @@ def inbox_content():
             maxResults=25
         ).execute()
 
-        from utils.database import get_db_connection
-        import json
-        from security.ml_detector import get_explanation_html
-        
         emails = []
         for m in results.get("messages", []):
             msg = service.users().messages().get(
@@ -491,7 +500,6 @@ def all_mail():
         batch.execute()
 
         # 3. Batch DB Query for Phishing Status
-        from utils.database import get_db_connection
         
         # Collect all message IDs
         msg_ids = [m["id"] for m in messages]
@@ -502,24 +510,25 @@ def all_mail():
                 cursor = conn.cursor()
                 # Create placeholders for IN clause
                 placeholders = ','.join(['?'] * len(msg_ids))
-                query = f"SELECT message_id, phishing, confidence FROM email_logs WHERE message_id IN ({placeholders})"
+                query = f"SELECT message_id, phishing, confidence, reason, explanation FROM email_logs WHERE message_id IN ({placeholders})"
                 cursor.execute(query, msg_ids)
                 rows = cursor.fetchall()
                 
                 for row in rows:
                     exp_html = ""
-                    if row[4]:
+                    reasonv = row[3] or ""
+                    explanationv = row[4]
+                    if explanationv:
                         try:
                             import json
-                            from security.ml_detector import get_explanation_html
-                            exp_data = json.loads(row[4]) if isinstance(row[4], str) else row[4]
+                            exp_data = json.loads(explanationv) if isinstance(explanationv, str) else explanationv
                             if exp_data: exp_html = get_explanation_html(exp_data)
                         except: pass
 
                     phishing_map[row[0]] = {
                         "is_phishing": bool(row[1]),
                         "confidence": row[2] or 0,
-                        "reason": row[3] or "",
+                        "reason": reasonv,
                         "explanation_html": exp_html
                     }
 
@@ -609,7 +618,6 @@ def starred_mail():
         ).execute()
 
         emails = []
-        from utils.database import get_db_connection
         
         for m in results.get("messages", []):
             msg = service.users().messages().get(
@@ -641,7 +649,6 @@ def starred_mail():
                     if explanation:
                         try:
                             import json
-                            from security.ml_detector import get_explanation_html
                             exp_data = json.loads(explanation) if isinstance(explanation, str) else explanation
                             if exp_data:
                                 explanation_html = get_explanation_html(exp_data)
@@ -700,6 +707,7 @@ def sent_mail():
             confidence = 0
             reason = ""
             explanation_html = ""
+            row = None
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -708,19 +716,18 @@ def sent_mail():
                 )
                 row = cursor.fetchone()
                 if row:
-                    is_phishing = bool(row[0])
-                    confidence = row[1] or 0
-                    reason = row[2] or ""
-                    explanation = row[3]
-                    if explanation:
-                        try:
+                    try:
+                        is_phishing = bool(row[0])
+                        confidence = row[1] or 0
+                        reason = row[2] or ""
+                        explanation = row[3] if len(row) > 3 else None
+                        if explanation:
                             import json
-                            from security.ml_detector import get_explanation_html
                             exp_data = json.loads(explanation) if isinstance(explanation, str) else explanation
                             if exp_data:
                                 explanation_html = get_explanation_html(exp_data)
-                        except:
-                            pass
+                    except Exception as e:
+                        logger.warning(f"Metadata fetch error: {e}")
 
             emails.append({
                 "id": m["id"],
@@ -771,15 +778,12 @@ def trash():
             body = msg.get("snippet", "")
             
             # Check database for phishing info
-            from utils.database import get_db_connection
-            import json
-            from security.ml_detector import get_explanation_html
-            
             is_phishing = False
             confidence = 0
             reason = ""
             explanation_html = ""
             action = ""
+            row = None
             
             with get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -789,27 +793,19 @@ def trash():
                 )
                 row = cursor.fetchone()
                 if row:
-                    is_phishing = bool(row[0])
-                    confidence = row[1] or 0
-                    reason = row[2] or ""
-                    explanation = row[3]
-                    action = row[4] or ""
-                    if explanation:
-                        try:
-                            # Parse explanation JSON
-                            if isinstance(explanation, str):
-                                exp_data = json.loads(explanation) if explanation.strip().startswith('{') else {}
-                            else:
-                                exp_data = explanation if isinstance(explanation, dict) else {}
-                            
-                            # Generate HTML explanation if we have valid data
-                            if exp_data and (exp_data.get('phishing_words') or exp_data.get('safe_words')):
+                    try:
+                        is_phishing = bool(row[0])
+                        confidence = row[1] or 0
+                        reason = row[2] or ""
+                        explanation = row[3] if len(row) > 3 else None
+                        action = row[4] if len(row) > 4 else ""
+                        if explanation:
+                            import json
+                            exp_data = json.loads(explanation) if isinstance(explanation, str) else explanation
+                            if exp_data:
                                 explanation_html = get_explanation_html(exp_data)
-                            else:
-                                logger.debug(f"No valid explanation data for message {m['id']}")
-                        except Exception as e:
-                            logger.warning(f"Error generating explanation HTML for message {m['id']}: {e}")
-                            explanation_html = ""
+                    except Exception as e:
+                        logger.warning(f"Trash metadata error: {e}")
             
             # Format date nicely
             date_str = ""
@@ -911,10 +907,6 @@ def api_delete_email():
 @require_auth
 def phishing_logs():
     try:
-        from utils.database import get_db_connection
-        import json
-        from security.ml_detector import get_explanation_html
-        
         emails = []
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -972,7 +964,6 @@ def compose():
 @require_auth
 def api_stats():
     try:
-        from utils.database import get_db_connection
         service = get_gmail_service()
         if not service:
             return jsonify({"error": "Gmail unavailable"}), 500
@@ -1019,15 +1010,11 @@ def api_stats():
             "starred": starred_count,
             "sent": sent_count,
             "trash": trash_count,
-            "allmail": inbox_count + trash_count + sent_count, # Better estimate
+            "allmail": inbox_count + sent_count, # Common Gmail definition of "All Mail" labels
             "phishing": phishing_detected,
             "total_scanned": total_scanned,
             "safe_scanned": safe_scanned
         })
-
-    except Exception as e:
-        logger.error(f"Stats error: {e}")
-        return jsonify({"error": str(e)}), 500
 
     except Exception as e:
         logger.error(f"Stats error: {e}")
@@ -1043,8 +1030,6 @@ def api_check_new_emails():
         if not service:
             return jsonify({"error": "Gmail unavailable"}), 500
 
-        from utils.database import get_db_connection
-        
         # Get recent messages from inbox
         results = service.users().messages().list(
             userId="me",
@@ -1114,6 +1099,94 @@ def api_check_new_emails():
 
     except Exception as e:
         logger.error(e)
+        return jsonify({"error": str(e)}), 500
+
+# ---------------- API: Scan Single Email ----------------
+
+@app.route("/api/scan-email", methods=["POST"])
+@require_auth
+def api_scan_email():
+    try:
+        data = request.json
+        message_id = data.get("message_id")
+        if not message_id:
+            return jsonify({"error": "Message ID required"}), 400
+            
+        service = get_gmail_service()
+        if not service:
+            return jsonify({"error": "Gmail unavailable"}), 500
+            
+        # 1. Check if already scanned
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT phishing, confidence, reason, explanation FROM email_logs WHERE message_id = ?",
+                (message_id,)
+            )
+            row = cursor.fetchone()
+            
+        if row:
+            exp_html = ""
+            if row[3]: # explanation
+                try:
+                    exp_data = json.loads(row[3]) if isinstance(row[3], str) else row[3]
+                    exp_html = get_explanation_html(exp_data)
+                except: pass
+                
+            return jsonify({
+                "id": message_id,
+                "is_phishing": bool(row[0]),
+                "confidence": int((row[1] or 0) * 100),
+                "reason": row[2] or "",
+                "explanation_html": exp_html,
+                "scanned": True
+            })
+            
+        # 2. If not scanned, fetch and scan
+        msg = service.users().messages().get(
+            userId="me",
+            id=message_id,
+            format="metadata",
+            metadataHeaders=["From", "Subject"]
+        ).execute()
+        
+        headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+        body = msg.get("snippet", "")
+        
+        is_phish, conf, reason, exp = ml_predict(body)
+        
+        log_email(
+            sender=headers.get("From", ""),
+            subject=headers.get("Subject", ""),
+            phishing=is_phish,
+            confidence=conf,
+            reason=reason,
+            action="Moved to Trash" if is_phish else "Scan Result",
+            explanation=exp,
+            message_id=message_id,
+            body=body
+        )
+        
+        if is_phish:
+            move_to_trash(service, message_id)
+            
+        exp_html = ""
+        if exp:
+            try:
+                exp_html = get_explanation_html(exp)
+            except: pass
+            
+        return jsonify({
+            "id": message_id,
+            "is_phishing": is_phish,
+            "confidence": int(conf * 100) if conf else 0,
+            "reason": reason,
+            "explanation_html": exp_html,
+            "scanned": True
+        })
+        
+    except Exception as e:
+        logger.error(f"Single scan error: {e}")
         return jsonify({"error": str(e)}), 500
 
 # ---------------- Logout ----------------

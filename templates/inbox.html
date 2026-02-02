@@ -69,6 +69,10 @@
                 </p>
             </div>
             {% endif %}
+
+            {% if email.explanation_html %}
+            {{ email.explanation_html | safe }}
+            {% endif %}
         </div>
 
         <div class="email-actions">

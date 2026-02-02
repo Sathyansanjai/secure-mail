@@ -9,7 +9,7 @@
 <div class="email-list">
     {% if emails|length == 0 %}
     <div class="empty-state">
-        <i class="fas fa-shield-alt"></i>
+        <i class="fas fa-shield-alt text-success" style="font-size: 3rem; margin-bottom: 20px; color: #10b981;"></i>
         <h3>No threats detected</h3>
         <p>Great! No phishing emails have been detected yet.</p>
     </div>
@@ -23,7 +23,7 @@
             <div class="email-header">
                 <h3 class="email-sender">{{ email.sender }}</h3>
                 <span class="email-badge danger">
-                    <i class="fas fa-shield-alt"></i>
+                    <i class="fas fa-shield-virus"></i>
                     Phishing {{ email.confidence }}%
                 </span>
             </div>

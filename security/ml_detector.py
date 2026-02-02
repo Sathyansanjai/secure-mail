@@ -204,6 +204,12 @@ def get_explanation_html(explanation_data):
             html += '</span>'
         html += '</div></div>'
     
+    # Fallback if no specific words
+    if not explanation_data.get('phishing_words') and not explanation_data.get('safe_words'):
+        html += '<div class="explanation-section">'
+        html += '<p class="xai-note"><i class="fas fa-info-circle"></i> No specific linguistic tokens strongly influenced this result. The classification is based on broader semantic patterns and metadata heuristics.</p>'
+        html += '</div>'
+    
     html += '<div class="xai-footer">'
     html += '<i class="fas fa-info-circle"></i> '
     html += 'These tokens were identified by our XAI engine as influential factors in this classification.</div>'

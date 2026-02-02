@@ -21,15 +21,28 @@
                     {% if email.confidence %}({{ email.confidence }}%){% endif %}
                 </span>
                 {% else %}
-                <span class="email-badge muted">
-                    <i class="fas fa-hourglass-half"></i>
-                    Scanning...
-                </span>
+                <button class="email-badge muted scan-now-btn" data-email-id="{{ email.id }}"
+                    title="Click to analyze this email now">
+                    <i class="fas fa-microchip"></i>
+                    Scan Now
+                </button>
                 {% endif %}
             </div>
 
             <h4 class="email-subject">{{ email.subject or "(No Subject)" }}</h4>
             <p class="email-preview">{{ email.body }}</p>
+
+            {% if email.reason %}
+            <div class="security-info {% if email.is_phishing %}phishing-variant{% else %}safe-variant{% endif %}">
+                <p><i class="fas {% if email.is_phishing %}fa-shield-virus{% else %}fa-shield-alt{% endif %}"></i>
+                    <strong>Analysis:</strong> {{ email.reason }}
+                </p>
+            </div>
+            {% endif %}
+
+            {% if email.explanation_html %}
+            {{ email.explanation_html | safe }}
+            {% endif %}
 
             <div class="email-meta">
                 <span>ID: {{ email.id[:8] }}...</span>
@@ -83,6 +96,25 @@
 
         if (starBtn) toggleStar(starBtn);
         if (flagBtn) toggleFlag(flagBtn);
+
+        /* ---------------- SCAN EMAIL ---------------- */
+        const scanBtn = e.target.closest(".scan-now-btn");
+        const learnBtn = e.target.closest(".learn-more-btn");
+
+        if (scanBtn) {
+            scanEmail(scanBtn.dataset.emailId, scanBtn);
+        } else if (learnBtn) {
+            // Check if card is still in 'Scanning...' state
+            const card = learnBtn.closest(".email-card");
+            const scanNowBtn = card.querySelector(".scan-now-btn");
+            if (scanNowBtn) {
+                scanEmail(learnBtn.dataset.emailId, scanNowBtn);
+            } else {
+                // Already scanned, maybe show something else? 
+                // For now, View Email is better for detailed info.
+                viewEmail(learnBtn.dataset.emailId, learnBtn);
+            }
+        }
     });
 
     /* --------------- FUNCTIONS ---------------- */
@@ -164,20 +196,107 @@
             });
     }
 
+    function scanEmail(emailId, btn) {
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Analyzing...';
+        btn.classList.add('scanning-active');
+
+        fetch("/api/scan-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message_id: emailId })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+
+                // Success! Update the card UI
+                const card = btn.closest(".email-card");
+
+                // 1. Update Badge
+                const badgeContainer = card.querySelector(".email-header");
+                const badgeClass = data.is_phishing ? 'danger' : 'safe';
+                const badgeIcon = data.is_phishing ? 'fa-shield-virus' : 'fa-shield-alt';
+                const badgeText = data.is_phishing ? 'Phishing' : 'Verified Safe';
+
+                badgeContainer.innerHTML = `
+                <h3 class="email-sender">${card.querySelector(".email-sender").textContent}</h3>
+                <span class="email-badge ${badgeClass} animate-pop">
+                    <i class="fas ${badgeIcon}"></i>
+                    ${badgeText} (${data.confidence}%)
+                </span>
+            `;
+
+                // 2. Add Security Info box
+                const contentDiv = card.querySelector(".email-content");
+                const previewP = card.querySelector(".email-preview");
+
+                const infoDiv = document.createElement("div");
+                infoDiv.className = `security-info ${data.is_phishing ? 'phishing-variant' : 'safe-variant'} animate-slide-down`;
+                infoDiv.innerHTML = `
+                <p><i class="fas ${badgeIcon}"></i>
+                    <strong>Analysis:</strong> ${data.reason}
+                </p>
+            `;
+
+                // Insert after preview
+                previewP.after(infoDiv);
+
+                // 3. Add Explanation HTML if exists
+                if (data.explanation_html) {
+                    const expDiv = document.createElement("div");
+                    expDiv.innerHTML = data.explanation_html;
+                    infoDiv.after(expDiv);
+                }
+
+                // 4. Update stats (global)
+                if (window.loadStats) window.loadStats();
+            })
+            .catch(err => {
+                console.error(err);
+                btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Retry Scan';
+                btn.disabled = false;
+            })
+            .finally(() => {
+                btn.classList.remove('scanning-active');
+            });
+    }
+
     function showModal(data) {
         const modal = document.createElement("div");
         modal.className = "email-modal";
-        modal.innerHTML = `
-            <div class="modal-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;"></div>
-            <div class="modal-content" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:12px;width:90%;max-width:600px;z-index:1000;box-shadow:0 10px 25px rgba(0,0,0,0.2);">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                    <h2 style="margin:0;font-size:1.2rem;">${data.subject || "No Subject"}</h2>
-                    <button style="background:none;border:none;font-size:1.5rem;cursor:pointer;" class="modal-close">&times;</button>
+
+        let securityBadge = '';
+        if (data.scanned) {
+            const badgeClass = data.is_phishing ? 'danger' : 'safe';
+            const badgeIcon = data.is_phishing ? 'fa-shield-virus' : 'fa-shield-alt';
+            const badgeText = data.is_phishing ? 'Phishing Detected' : 'Verified Safe';
+            securityBadge = `
+                <div class="email-badge ${badgeClass}" style="display: inline-flex; margin-bottom: 10px;">
+                    <i class="fas ${badgeIcon}"></i> ${badgeText} (${data.confidence}%)
                 </div>
-                <p><strong>From:</strong> ${data.sender}</p>
-                <div style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">${data.date || ''}</div>
-                <hr>
-                <div style="max-height:60vh; overflow-y:auto; margin-top:10px;">${data.body || "No content."}</div>
+            `;
+        }
+
+        modal.innerHTML = `
+            <div class="modal-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999;backdrop-filter:blur(4px);"></div>
+            <div class="modal-content" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:30px;border-radius:16px;width:95%;max-width:800px;z-index:1000;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);max-height:90vh;display:flex;flex-direction:column;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
+                    <div>
+                        ${securityBadge}
+                        <h2 style="margin:0;font-size:1.4rem;color:#1e293b;line-height:1.3;">${data.subject || "No Subject"}</h2>
+                        <div style="font-size: 0.9rem; color: #64748b; margin-top: 8px;">
+                            <strong>From:</strong> ${data.sender} | <strong>Date:</strong> ${data.date || ''}
+                        </div>
+                    </div>
+                    <button style="background:#f1f5f9;border:none;width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;" class="modal-close"><i class="fas fa-times"></i></button>
+                </div>
+                
+                <div style="overflow-y:auto; flex:1; padding-right:10px;">
+                    ${data.explanation_html ? `<div style="margin-bottom:20px; padding:15px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;">${data.explanation_html}</div>` : ''}
+                    <div style="line-height:1.6; color:#334155; white-space: pre-wrap;">${data.body || "No content."}</div>
+                </div>
             </div>
         `;
         document.body.appendChild(modal);
