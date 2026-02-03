@@ -60,3 +60,8 @@ Thumbs.db
 
 # Test files
 test_*.py
+
+# Run scripts with API keys
+run.ps1
+run.sh
+start.bat
