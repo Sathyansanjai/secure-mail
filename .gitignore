@@ -61,7 +61,6 @@ Thumbs.db
 # Test files
 test_*.py
 
-# Run scripts with API keys
-run.ps1
+# Run scripts (templates are safe to commit, local scripts should be too if clean)
 run.sh
 start.bat
