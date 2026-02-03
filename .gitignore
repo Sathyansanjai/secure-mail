@@ -25,32 +25,38 @@ venv/
 ENV/
 env/
 
-# Flask
-instance/
-.webassets-cache
+# Environment Variables
+.env
+*.env
+
+# API Keys and Secrets
+client_secret.json
+credentials.json
+token.pickle
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
 
-# ML Models
-ml/*.pkl
+# Logs
+*.log
+logs/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Credentials
-credentials.json
-token.json
-client_secret*.json
+# ML Models (optional - uncomment if models are large)
+# ml/*.pkl
+# ml/*.joblib
 
-# Logs
-*.log
+# Test files
+test_*.py

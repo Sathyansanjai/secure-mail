@@ -58,7 +58,9 @@ class Config:
     LOG_FILE = os.environ.get("LOG_FILE", "smail.log")
     
     # Gemini API Configuration
-    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDJlj1a-ahC_rNx7k61jlTGinlbclYCfBA")
+    # IMPORTANT: Set GEMINI_API_KEY as an environment variable for security
+    # Never commit API keys to version control
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # Create instance
 config = Config()
