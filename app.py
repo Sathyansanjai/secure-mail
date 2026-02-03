@@ -10,7 +10,7 @@ from googleapiclient.errors import HttpError
 from google.oauth2.credentials import Credentials
 from security.ml_detector import ml_predict, get_explanation_html
 from security.auto_del import move_to_trash, restore_from_trash, delete_permanently
-from database.db import init_db
+from database.db import init_db, reset_scan_data
 from database.logs import log_email
 from utils.database import get_db_connection
 from middleware.auth import require_auth, get_gmail_service, parse_credentials_from_session
@@ -31,6 +31,16 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# Global scan status for progress tracking
+SCAN_PROGRESS = {
+    "status": "idle",
+    "total": 0,
+    "current": 0,
+    "phishing": 0,
+    "safe": 0,
+    "last_update": None
+}
 
 # ---------------- App Init ----------------
 
@@ -328,6 +338,10 @@ def inbox_content():
                         except:
                             pass
             
+            # STRICT FILTER: If identified as phishing, do not show in Inbox
+            if is_phishing:
+                continue
+
             emails.append({
                 "id": m["id"],
                 "sender": headers.get("From", ""),
@@ -395,62 +409,124 @@ def scan_emails():
     if not creds_dict:
         return jsonify({"error": "Unauthorized"}), 401
 
+    if SCAN_PROGRESS["status"] == "running":
+        return jsonify({"message": "Scan already in progress", "progress": SCAN_PROGRESS})
+
     def worker():
+        global SCAN_PROGRESS
         try:
             from googleapiclient.discovery import build
             from google.auth.transport.requests import Request
             
-            # Create credentials object and refresh if needed
+            SCAN_PROGRESS.update({
+                "status": "running",
+                "total": 0,
+                "current": 0,
+                "phishing": 0,
+                "safe": 0,
+                "last_update": datetime.now().isoformat()
+            })
+            
             creds = Credentials(**creds_dict)
             if creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             
             service = build("gmail", "v1", credentials=creds)
 
-            results = service.users().messages().list(
-                userId="me",
-                maxResults=50
-            ).execute()
+            # Get total count for progress estimation
+            profile = service.users().getProfile(userId="me").execute()
+            total_messages_estimate = profile.get("messagesTotal", 0)
+            SCAN_PROGRESS["total"] = total_messages_estimate
 
-            for m in results.get("messages", []):
-                msg = service.users().messages().get(
+            page_token = None
+            while True:
+                results = service.users().messages().list(
                     userId="me",
-                    id=m["id"],
-                    format="metadata",
-                    metadataHeaders=["From", "Subject"]
+                    maxResults=100,
+                    pageToken=page_token
                 ).execute()
 
-                # Extract headers
-                headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
-                sender = headers.get("From", "")
-                subject = headers.get("Subject", "")
-                body = msg.get("snippet", "")
-                
-                if not body:
-                    continue
+                messages = results.get("messages", [])
+                if not messages:
+                    break
 
-                is_phish, conf, reason, exp = ml_predict(body)
+                for m in messages:
+                    # Check if already scanned to avoid redundant work
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT phishing FROM email_logs WHERE message_id = ?", (m["id"],))
+                        exists = cursor.fetchone()
+                    
+                    if exists:
+                        SCAN_PROGRESS["current"] += 1
+                        if exists[0]: SCAN_PROGRESS["phishing"] += 1
+                        else: SCAN_PROGRESS["safe"] += 1
+                        continue
 
-                log_email(
-                    sender=sender,
-                    subject=subject,
-                    phishing=is_phish,
-                    confidence=conf,
-                    reason=reason,
-                    action="Moved to Trash" if is_phish else "Safe",
-                    explanation=exp,
-                    message_id=m["id"],
-                    body=body
-                )
+                    try:
+                        msg = service.users().messages().get(
+                            userId="me",
+                            id=m["id"],
+                            format="metadata",
+                            metadataHeaders=["From", "Subject"]
+                        ).execute()
 
-                if is_phish:
-                    move_to_trash(service, m["id"])
+                        headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                        sender = headers.get("From", "")
+                        subject = headers.get("Subject", "")
+                        body = msg.get("snippet", "")
+                        
+                        if not body:
+                            SCAN_PROGRESS["current"] += 1
+                            continue
+
+                        # Pass sender and subject to ml_predict for dynamic agent analysis
+                        is_phish, conf, reason, exp = ml_predict(body, sender, subject)
+
+                        log_email(
+                            sender=sender,
+                            subject=subject,
+                            phishing=is_phish,
+                            confidence=conf,
+                            reason=reason,
+                            action="Moved to Trash" if is_phish else "Safe",
+                            explanation=exp,
+                            message_id=m["id"],
+                            body=body
+                        )
+
+                        SCAN_PROGRESS["current"] += 1
+                        if is_phish:
+                            SCAN_PROGRESS["phishing"] += 1
+                            move_to_trash(service, m["id"])
+                        else:
+                            SCAN_PROGRESS["safe"] += 1
+                        
+                        SCAN_PROGRESS["last_update"] = datetime.now().isoformat()
+
+                    except Exception as e:
+                        logger.error(f"Worker error processing msg {m['id']}: {e}")
+                        SCAN_PROGRESS["current"] += 1
+
+                page_token = results.get("nextPageToken")
+                if not page_token:
+                    break
+
+            SCAN_PROGRESS["status"] = "completed"
+            logger.info(f"Full scan completed. Total: {SCAN_PROGRESS['current']}, Phishing: {SCAN_PROGRESS['phishing']}")
 
         except Exception as e:
             logger.error(f"Scan error: {e}")
+            SCAN_PROGRESS["status"] = "error"
+            SCAN_PROGRESS["error_message"] = str(e)
 
     threading.Thread(target=worker, daemon=True).start()
-    return jsonify({"message": "Scan started"})
+    return jsonify({"message": "Scan started", "progress": SCAN_PROGRESS})
+
+@app.route("/api/scan-progress")
+@require_auth
+def api_scan_progress():
+    return jsonify(SCAN_PROGRESS)
 
 # ---------------- All Mail ----------------
 
@@ -985,32 +1061,36 @@ def api_stats():
         starred_count = get_count("STARRED")
         sent_count = get_count("SENT")
         
-        # Fallback if IDs are different (rare index/localized)
-        if starred_count == 0:
-            star_id = next((l["id"] for l in labels if l["name"].upper() == "STARRED"), "STARRED")
-            starred_count = get_count(star_id)
-            
-        if sent_count == 0:
-            sent_id = next((l["id"] for l in labels if l["name"].upper() == "SENT"), "SENT")
-            sent_count = get_count(sent_id)
+        # Accurate All Mail count (Gmail system label)
+        allmail_id = next((l["id"] for l in labels if "ALLMAIL" in l["id"] or l["name"] == "All Mail"), "INBOX")
+        allmail_count = get_count(allmail_id)
+        
+        # Fallback if All Mail system label is tricky
+        if allmail_count == 0:
+            allmail_count = inbox_count + sent_count
 
         # DB counts for protection stats
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM email_logs")
+            # We count distinct message IDs to avoid double-counting re-scans
+            cursor.execute("SELECT COUNT(DISTINCT message_id) FROM email_logs")
             total_scanned = cursor.fetchone()[0]
             
-            cursor.execute("SELECT COUNT(*) FROM email_logs WHERE phishing = 1")
+            cursor.execute("SELECT COUNT(DISTINCT message_id) FROM email_logs WHERE phishing = 1")
             phishing_detected = cursor.fetchone()[0]
             
             safe_scanned = total_scanned - phishing_detected
-        
+            
+        # Adjust Inbox count to reflect ONLY safe emails (UI consistency)
+        # We subtract phishing count because our UI strictly hides them, even if Gmail API still reports them in Inbox.
+        safe_inbox_count = max(0, inbox_count - phishing_detected)
+            
         return jsonify({
-            "inbox": inbox_count,
+            "inbox": safe_inbox_count,
             "starred": starred_count,
             "sent": sent_count,
             "trash": trash_count,
-            "allmail": inbox_count + sent_count, # Common Gmail definition of "All Mail" labels
+            "allmail": allmail_count,
             "phishing": phishing_detected,
             "total_scanned": total_scanned,
             "safe_scanned": safe_scanned
@@ -1018,6 +1098,16 @@ def api_stats():
 
     except Exception as e:
         logger.error(f"Stats error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/reset-scan", methods=["POST"])
+@require_auth
+def api_reset_scan():
+    try:
+        reset_scan_data()
+        return jsonify({"message": "Successfully reset all scan data"})
+    except Exception as e:
+        logger.error(f"Reset scan error: {e}")
         return jsonify({"error": str(e)}), 500
 
 # ---------------- API: Check New Emails ----------------

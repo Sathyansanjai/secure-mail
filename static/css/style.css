@@ -1419,3 +1419,68 @@ button {
 .animate-slide-down {
     animation: slideDown 0.4s ease-out forwards;
 }
+/* Scan Progress Bar */
+.scan-progress-container {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e0e0e0;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 6px;
+}
+
+.progress-bar-bg {
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.scan-details {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: right;
+}
+
+.reset-scan-btn {
+    margin-top: 15px;
+    width: 100%;
+    background: white;
+    border: 1px solid #cbd5e0;
+    color: var(--text-muted);
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.reset-scan-btn:hover {
+    background: #f7fafc;
+    color: var(--danger);
+    border-color: #feb2b2;
+}
+
+.reset-scan-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

@@ -17,68 +17,57 @@ if not os.path.exists("ml"):
 # Initialize LIME explainer
 explainer = LimeTextExplainer(class_names=['Safe', 'Phishing'])
 
-class KnowledgeSynthesisEngine:
+class CybersecurityAgent:
     """
-    Synthesizes professional security insights based on detected risk indicators.
+    An autonomous agent that perceives email context and constructs dynamic security narratives.
+    Replaces static templates with a logic-based construction pipeline.
     """
-    TACTICS_MAP = {
-        'Urgency/Pressure': ['urgent', 'immediate', 'immediately', 'now', 'expire', 'limited', 'quick'],
-        'Credential Harvesting': ['verify', 'password', 'login', 'account', 'credentials', 'reset', 'confirm'],
-        'Social Engineering': ['click', 'link', 'suspended', 'alert', 'security', 'unusual', 'activity'],
-        'Financial Lure/Scam': ['prize', 'winner', 'claim', 'refund', 'payment', 'gift', 'card'],
-        'Trust Exploitation': ['official', 'support', 'technical', 'helpdesk', 'system', 'administrator']
-    }
-
-    CONNECTORS = [
-        "The analysis indicates a high correlation between {tactic} and typical malicious patterns.",
-        "Detected {tactic} vectors that are highly indicative of advanced persistent threats.",
-        "The payload structure exhibits characteristics of {tactic}, a common infiltration strategy.",
-        "Internal heuristics have identified a {tactic} signature within the communication context."
-    ]
-
-    INSIGHTS = [
-        "Specifically, the presence of these indicators suggests a targeted attempt at {action}.",
-        "These patterns are often associated with {action} in sophisticated social engineering campaigns.",
-        "We recommend caution as the linguistic structure aligns with standard {action} methodologies."
-    ]
-
-    ACTION_MAP = {
-        'Urgency/Pressure': 'coerced response generation',
-        'Credential Harvesting': 'unauthorized access acquisition',
-        'Social Engineering': 'manipulative psychological exploit',
-        'Financial Lure/Scam': 'fraudulent asset extraction',
-        'Trust Exploitation': 'authority-based deception'
-    }
-
-    @classmethod
-    def synthesize(cls, risk_words):
+    
+    @staticmethod
+    def analyze_and_explain(sender, subject, risk_words):
+        """
+        Constructs a unique explanation based on the specific evidence found.
+        """
         if not risk_words:
-            return "Analysis complete. Pattern recognition identified non-specific anomalies within the communication structure."
+            return "The security agent detected anomalous patterns but could not isolate specific linguistic triggers."
 
-        # Map words to tactics
-        detected_tactics = set()
-        for word_data in risk_words:
-            word = word_data['word'].lower()
-            for tactic, keywords in cls.TACTICS_MAP.items():
-                if word in keywords:
-                    detected_tactics.add(tactic)
+        # PERCEPTION: Gather artifacts
+        words = [w['word'] for w in risk_words[:3]]
+        word_str = ", ".join(f"'{w}'" for w in words)
         
-        if not detected_tactics:
-            return f"Heuristic analysis flagged high-risk tokens including: {', '.join([w['word'] for w in risk_words[:3]])}. This linguistic pattern is statistically aligned with known phishing vectors."
+        # PROFILING: Determine attack archetype
+        archetype = "General Phishing"
+        risk_types = []
+        
+        # Simple keyword mapping for archetype detection
+        keywords = " ".join(words).lower()
+        if any(x in keywords for x in ['password', 'login', 'account', 'verify']):
+            archetype = "Credential Harvesting"
+        elif any(x in keywords for x in ['urgent', 'immediate', 'expire', 'now']):
+            archetype = "High-Pressure Social Engineering"
+        elif any(x in keywords for x in ['winner', 'prize', 'gift', 'money', 'claim']):
+            archetype = "Financial Fraud"
+        elif any(x in keywords for x in ['security', 'alert', 'suspended']):
+            archetype = "Impersonation Attack"
 
-        # Pick primary tactic
-        primary_tactic = list(detected_tactics)[0]
-        import random
+        # CONSTRUCTION: Build the narrative dynamically
+        # Opening
+        explanation = f"The automated agent detected {archetype} indicators. "
         
-        connector = random.choice(cls.CONNECTORS).format(tactic=primary_tactic)
-        insight = random.choice(cls.INSIGHTS).format(action=cls.ACTION_MAP.get(primary_tactic, 'data exfiltration'))
+        # Evidence Bridge
+        explanation += f"Specifically, the use of high-risk tokens like {word_str} "
         
-        # Combine with risk words
-        top_words = [f"'{w['word']}'" for w in risk_words[:3]]
+        # Contextual Analysis (using Subject/Sender if available)
+        if subject:
+             explanation += f"within the subject line '{subject[:30]}...' "
         
-        return f"{connector} {insight} Key risk-weighted tokens: {', '.join(top_words)}."
+        # Strategic Conclusion
+        explanation += "suggests a deliberate attempt to manipulate the recipient. "
+        explanation += "The agent has classified this as a confirmed threat based on these observed behavioral vectors."
 
-def ml_predict(text):
+        return explanation
+
+def ml_predict(text, sender="", subject=""):
     """
     Predict if email text is phishing with XAI explanation
     Returns: (is_phishing: bool, confidence: float, reason: str, explanation: dict)
@@ -94,11 +83,18 @@ def ml_predict(text):
         X = vectorizer.transform([text])
         
         # Predict
-        prediction = model.predict(X)[0]
         confidence = model.predict_proba(X)[0]
         
+        # Get phishing probability (index 1)
+        phishing_prob = confidence[1]
+        
+        # Enforce higher threshold for classification to reduce false positives
+        # Default is 0.5, but we want to be safer (e.g., 0.7)
+        THRESHOLD = 0.70
+        prediction = 1 if phishing_prob > THRESHOLD else 0
+        
         # Get confidence for predicted class
-        pred_confidence = confidence[1] if prediction == 1 else confidence[0]
+        pred_confidence = phishing_prob if prediction == 1 else confidence[0]
         
         # Generate explanation using LIME
         explanation_data = {}
@@ -147,10 +143,15 @@ def ml_predict(text):
                 logger.warning(f"LIME explanation error: {e}")
                 explanation_data = {}
         
-        # Determine reason using Knowledge Synthesis Engine
+        # Determine reason using Cybersecurity Agent
         reason = ""
         if prediction == 1:
-            reason = KnowledgeSynthesisEngine.synthesize(explanation_data.get('phishing_words', []))
+            # DYNAMIC AGENT EXPLANATION
+            reason = CybersecurityAgent.analyze_and_explain(
+                sender, 
+                subject, 
+                explanation_data.get('phishing_words', [])
+            )
         else:
             reason = "Automated heuristics and linguistic analysis indicate this message maintains a high integrity score. No malicious payloads or social engineering patterns identified."
         

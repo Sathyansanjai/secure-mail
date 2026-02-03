@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report, accuracy_score
 # Configuration
 ML_DIR = "ml"
 MODEL_FILE = "phishing_model.pkl"
-DATASET_PATH = None  # User should set this to their CSV path
+DATASET_PATH = "enron_spam.csv"  # Default to Enron dataset if it exists
 
 def train_model(dataset_path=None):
     if not os.path.exists(ML_DIR):
@@ -30,53 +30,59 @@ def train_model(dataset_path=None):
             print("Error: CSV must contain 'text' and 'label' columns.")
             return
     else:
-        print("No external dataset found. Using enhanced internal synthetic dataset...")
-        # High-fidelity synthetic dataset for demonstration
-        texts = [
-            # Phishing (Synthesized professional patterns)
-            "Urgent: Your account privacy has been compromised. Verify your identity now.",
-            "Suspension Notice: Unusual login attempt from unrecognized device. Reset password.",
-            "Immediate Action Required: Confirm your payment details to avoid service interruption.",
-            "Security Alert: A security breach was detected. Please secure your account immediately.",
-            "Account Lockout: Your subscription has expired. Update billing information to reactivate.",
-            "Win a $500 Gift Card! Click here to claim your exclusive reward.",
-            "Official Notice: Please confirm your shipping address for the pending package.",
-            "Technical Support: Your system needs an update. View instructions here.",
-            
-            # Safe (Professional correspondence)
-            "The quarterly report is attached for your review. Let me know if you have questions.",
-            "Meeting invitation: Project sync scheduled for tomorrow at 10 AM.",
-            "Thank you for your inquiry. Our team will get back to you shortly.",
-            "Your order #12345 has been shipped. Track your package on our website.",
-            "Happy birthday from all of us! Have a wonderful day.",
-            "Please find the notes from today's sync meeting in the shared drive.",
-            "I've updated the documentation for the new API endpoint. Please check.",
-            "Regarding our discussion earlier, I've confirmed the deadline for next Friday."
-        ]
-        labels = [1] * 8 + [0] * 8
+        print(f"Error: External dataset {DATASET_PATH} not found.")
+        print("Please ensure enron_spam.csv is present or provided as an argument.")
+        return
 
     # ML Pipeline
     print("Vectorizing data...")
-    # Using bi-grams and sub-linear scaling for better text analysis
+    
+    # Comprehensive stop words to ignore common linguistic noise
+    custom_stop_words = [
+        'just', 'start', 'we', 'now', 'pulled', 'pulled', 'jobs', 'alert', 'alerts',
+        'matching', 'profile', 'fresher', 'software', 'engineer', 'developer',
+        'weekly', 'report', 'stats', 'meeting', 'availability', 'purchase',
+        'device', 'reminder', 'renew', 'opportunities', 'unread', 'dashboard',
+        'comment', 'conversation', 'view', 'check', 'explore', 'exploring',
+        'com', 'iii', 'notification', 'notifications', 'update', 'updates',
+        'job', 'apply', 'application', 'status', 'candidate', 'resume', 'cv',
+        'interview', 'hiring', 'position', 'role', 'team', 'join', 'network',
+        'connection', 'connect', 'invitation', 'invite', 'linkedin', 'naukri',
+        'indeed', 'glassdoor', 'recruiter', 'talent', 'acquisition', 'hr'
+    ]
+    from sklearn.feature_extraction import text
+    stop_words = list(text.ENGLISH_STOP_WORDS.union(custom_stop_words))
+
+    # Improved vectorization:
+    # - min_df=3: Ignore words that appear in fewer than 3 documents
+    # - max_df=0.7: Ignore words that appear in more than 70% of documents
+    # - n-gram range (1,3): Still look at common phrases
     vectorizer = TfidfVectorizer(
-        max_features=2000, 
-        stop_words='english', 
-        ngram_range=(1, 2),
-        sublinear_tf=True
+        max_features=5000, 
+        stop_words=stop_words, 
+        ngram_range=(1, 3), 
+        sublinear_tf=True,
+        min_df=3,
+        max_df=0.7,
+        strip_accents='unicode'
     )
     
     X = vectorizer.fit_transform(texts)
     
-    # Split for validation if enough data
+    # Split for validation to show user metrics
     if len(texts) > 20:
         X_train, X_test, y_train, y_test = train_test_split(X, labels, test_size=0.2, random_state=42)
-        print("Training model on dataset...")
-        model = LogisticRegression(C=1.0, max_iter=1000, class_weight='balanced')
-        model.fit(X_train, y_train)
+        print("Validating model on 80/20 split...")
+        val_model = LogisticRegression(C=2.0, max_iter=2000, class_weight='balanced', solver='lbfgs')
+        val_model.fit(X_train, y_train)
+        y_pred = val_model.predict(X_test)
+        print(f"\nValidation Accuracy: {accuracy_score(y_test, y_pred)*100:.2f}%")
+        print("Validation Report:\n", classification_report(y_test, y_pred))
         
-        y_pred = model.predict(X_test)
-        print(f"\nModel Accuracy: {accuracy_score(y_test, y_pred)*100:.2f}%")
-        print("Classification Report:\n", classification_report(y_test, y_pred))
+        # Now retrain on 100% of data for the final saved model
+        print("Retraining final model on 100% of data for maximum accuracy...")
+        model = LogisticRegression(C=2.0, max_iter=2000, class_weight='balanced', solver='lbfgs')
+        model.fit(X, labels)
     else:
         print("Small dataset detected. Training on full data...")
         model = LogisticRegression(C=1.0, max_iter=1000, class_weight='balanced')

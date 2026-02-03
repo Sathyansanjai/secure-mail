@@ -132,11 +132,63 @@ function initApp() {
         // Reinitialize search if needed
         setupSearch();
 
-        // If it's compose page, ensure form is ready
         if (url.includes('/compose')) {
             // Compose form initialization is handled in compose.html script
         }
     });
+
+    // Start polling for scan progress if appropriate
+    pollScanProgress();
+}
+
+let progressPollInterval = null;
+
+function pollScanProgress() {
+    if (progressPollInterval) clearInterval(progressPollInterval);
+
+    // Initial check
+    checkProgress();
+
+    // Poll every 2 seconds
+    progressPollInterval = setInterval(checkProgress, 2000);
+
+    function checkProgress() {
+        const container = document.getElementById("scan-progress-container");
+        if (!container) return; // Not on page with stats
+
+        fetch("/api/scan-progress")
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === "running") {
+                    container.style.display = "block";
+
+                    // Update text
+                    const percent = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+                    document.getElementById("scan-percent").textContent = percent + "%";
+                    document.getElementById("scan-status-text").textContent = "Scanning " + data.current + " emails...";
+
+                    // Update bar
+                    document.getElementById("scan-progress-fill").style.width = percent + "%";
+
+                    // Update counts
+                    document.getElementById("scan-counts").textContent =
+                        `${data.current} / ${data.total > 0 ? "~" + data.total : "?"}`;
+
+                    // Also refresh stats periodically
+                    if (data.current % 10 === 0) loadStats();
+
+                } else if (data.status === "completed") {
+                    if (container.style.display !== "none") {
+                        // Just finished
+                        container.style.display = "none";
+                        loadStats(); // Final refresh
+                    }
+                } else {
+                    container.style.display = "none";
+                }
+            })
+            .catch(err => console.error("Progress poll error:", err));
+    }
 }
 
 function loadPage(url, showLoading = true) {
@@ -590,3 +642,101 @@ window.addEventListener('pageLoaded', function (e) {
         });
     }
 });
+
+function resetScanData() {
+    if (!confirm("Are you sure you want to reset all scan data? This will clear all previous protection logs and start scanning from scratch.")) {
+        return;
+    }
+
+    const btn = document.querySelector(".reset-scan-btn");
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...';
+    btn.disabled = true;
+
+    fetch("/api/reset-scan", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        }
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+
+            alert("Scan data reset successfully. Starting full scan...");
+
+            // Trigger new full scan
+            fetch("/scan-emails").catch(e => console.error(e));
+
+            // Start polling immediately
+            pollScanProgress();
+
+            // Refresh local UI
+            loadStats();
+
+            // Refresh active page
+            const activeItem = document.querySelector(".menu-item.active");
+            if (activeItem) {
+                const page = activeItem.dataset.page;
+                const routes = {
+                    "inbox": "/inbox",
+                    "starred": "/starred",
+                    "sent": "/sent",
+                    "allmail": "/allmail",
+                    "trash": "/trash",
+                    "phishing": "/phishing-logs"
+                };
+                if (routes[page]) loadPage(routes[page], false);
+            }
+        })
+        .catch(err => {
+            console.error("Reset error:", err);
+            alert("Error resetting scan data: " + err.message);
+        })
+        .finally(() => {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        });
+}
+
+let scanProgressInterval;
+
+function pollScanProgress() {
+    // Clear any existing interval to prevent duplicates
+    if (scanProgressInterval) {
+        clearInterval(scanProgressInterval);
+    }
+
+    const updateProgress = () => {
+        fetch("/api/scan-progress")
+            .then(res => res.json())
+            .then(data => {
+                const progressElement = document.getElementById("scanProgress");
+                if (progressElement) {
+                    if (data.scanning) {
+                        progressElement.style.display = "block";
+                        progressElement.querySelector(".progress-bar").style.width = `${data.progress}%`;
+                        progressElement.querySelector(".progress-text").textContent = `Scanning: ${data.progress}% (${data.scanned_count}/${data.total_count})`;
+                    } else {
+                        progressElement.style.display = "none";
+                        clearInterval(scanProgressInterval);
+                        scanProgressInterval = null; // Clear interval ID
+                        loadStats(); // Refresh stats once scan is complete
+                    }
+                } else if (!data.scanning) {
+                    // If element doesn't exist but scan is not active, stop polling
+                    clearInterval(scanProgressInterval);
+                    scanProgressInterval = null;
+                }
+            })
+            .catch(err => {
+                console.error("Error polling scan progress:", err);
+                clearInterval(scanProgressInterval);
+                scanProgressInterval = null;
+            });
+    };
+
+    // Poll every 2 seconds
+    scanProgressInterval = setInterval(updateProgress, 2000);
+    updateProgress(); // Call immediately to show initial state
+}

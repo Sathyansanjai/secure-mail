@@ -111,3 +111,15 @@ def get_db_stats():
     print(f"Oldest Log:       {oldest}")
     print(f"Newest Log:       {newest}")
     print("="*50 + "\n")
+
+
+def reset_scan_data():
+    """Clear all email logs from the database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM email_logs")
+    conn.commit()
+    cursor.execute("VACUUM")
+    conn.close()
+    logger.info("All scan data has been reset")
+    return True

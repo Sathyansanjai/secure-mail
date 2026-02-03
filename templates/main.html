@@ -90,6 +90,23 @@
                 <div class="stat-item">Total Scanned <strong id="stat-total">0</strong></div>
                 <div class="stat-item">Safe Emails <strong id="stat-safe" class="text-success">0</strong></div>
                 <div class="stat-item">Threats Blocked <strong id="stat-phishing" class="text-danger">0</strong></div>
+
+                <div id="scan-progress-container" class="scan-progress-container" style="display: none;">
+                    <div class="progress-info">
+                        <span id="scan-status-text">Scanning...</span>
+                        <span id="scan-percent">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="scan-progress-fill" class="progress-bar-fill" style="width: 0%;"></div>
+                    </div>
+                    <div class="scan-details">
+                        <span id="scan-counts">0 / 0</span>
+                    </div>
+                </div>
+
+                <button class="reset-scan-btn" onclick="resetScanData()">
+                    <i class="fas fa-undo"></i> Reset Scan Data
+                </button>
             </div>
         </div>
     </aside>
