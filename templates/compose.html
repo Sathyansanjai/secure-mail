@@ -46,6 +46,19 @@
         const form = document.getElementById("composeForm");
         if (!form) return;
 
+        // Auto-fill from Smart Reply
+        const draft = localStorage.getItem("smart_reply_draft");
+        if (draft) {
+            document.getElementById("composeTo").value = localStorage.getItem("smart_reply_to") || "";
+            document.getElementById("composeSubject").value = localStorage.getItem("smart_reply_subject") || "";
+            document.getElementById("composeBody").value = draft;
+
+            // Clear storage
+            localStorage.removeItem("smart_reply_draft");
+            localStorage.removeItem("smart_reply_to");
+            localStorage.removeItem("smart_reply_subject");
+        }
+
         form.addEventListener("submit", e => {
             e.preventDefault();
 

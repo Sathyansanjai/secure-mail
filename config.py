@@ -56,6 +56,9 @@ class Config:
     # Logging
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
     LOG_FILE = os.environ.get("LOG_FILE", "smail.log")
+    
+    # Gemini API Configuration
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDJlj1a-ahC_rNx7k61jlTGinlbclYCfBA")
 
 # Create instance
 config = Config()

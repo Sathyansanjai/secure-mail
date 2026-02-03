@@ -3,6 +3,7 @@ import os
 import numpy as np
 from lime.lime_text import LimeTextExplainer
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -26,46 +27,113 @@ class CybersecurityAgent:
     @staticmethod
     def analyze_and_explain(sender, subject, risk_words):
         """
-        Constructs a unique explanation based on the specific evidence found.
+        Constructs a unique, professional security briefing.
         """
         if not risk_words:
-            return "The security agent detected anomalous patterns but could not isolate specific linguistic triggers."
+            return "Analysis inconclusive: Standard pattern matching yielded no specific signatures, yet the anomaly score exceeded safety thresholds."
 
-        # PERCEPTION: Gather artifacts
-        words = [w['word'] for w in risk_words[:3]]
-        word_str = ", ".join(f"'{w}'" for w in words)
-        
-        # PROFILING: Determine attack archetype
-        archetype = "General Phishing"
-        risk_types = []
-        
-        # Simple keyword mapping for archetype detection
-        keywords = " ".join(words).lower()
-        if any(x in keywords for x in ['password', 'login', 'account', 'verify']):
-            archetype = "Credential Harvesting"
-        elif any(x in keywords for x in ['urgent', 'immediate', 'expire', 'now']):
-            archetype = "High-Pressure Social Engineering"
-        elif any(x in keywords for x in ['winner', 'prize', 'gift', 'money', 'claim']):
-            archetype = "Financial Fraud"
-        elif any(x in keywords for x in ['security', 'alert', 'suspended']):
-            archetype = "Impersonation Attack"
+        try:
+            # 1. PERCEPTION: Extract Core Artifacts
+            words = [w['word'] for w in risk_words[:4]]
+            word_str = ", ".join(f"'{w}'" for w in words)
+            sender_display = sender if sender else "Unknown Source"
+            subject_display = f"'{subject}'" if subject else "the message header"
+            
+            # 2. PROFILING: Identify Behavioral Archetype
+            keywords = " ".join(words).lower()
+            if any(x in keywords for x in ['password', 'login', 'account', 'verify', 'update']):
+                archetype = "Credential Harvesting"
+                impact = "unauthorized access and identity theft"
+            elif any(x in keywords for x in ['urgent', 'immediate', 'expire', 'now', 'action']):
+                archetype = "Coercive Social Engineering"
+                impact = "forced decision-making under artificial pressure"
+            elif any(x in keywords for x in ['winner', 'prize', 'gift', 'money', 'claim', 'fund']):
+                archetype = "Advance-Fee / Financial Fraud"
+                impact = "financial loss via deceptive solicitation"
+            elif any(x in keywords for x in ['security', 'alert', 'suspended', 'unusual']):
+                archetype = "Impersonation / Security Spoofing"
+                impact = "stealing trust by mimicking authority figures"
+            else:
+                archetype = "Anomalous Communication Pattern"
+                impact = "delivery of potentially malicious payloads"
 
-        # CONSTRUCTION: Build the narrative dynamically
-        # Opening
-        explanation = f"The automated agent detected {archetype} indicators. "
-        
-        # Evidence Bridge
-        explanation += f"Specifically, the use of high-risk tokens like {word_str} "
-        
-        # Contextual Analysis (using Subject/Sender if available)
-        if subject:
-             explanation += f"within the subject line '{subject[:30]}...' "
-        
-        # Strategic Conclusion
-        explanation += "suggests a deliberate attempt to manipulate the recipient. "
-        explanation += "The agent has classified this as a confirmed threat based on these observed behavioral vectors."
+            # 3. CONSTRUCTION: Select a Professional Narrative Template
+            templates = [
+                # Template A: The Executive Brief
+                f"**Threat Assessment**: The email {subject_display} from {sender_display} has been flagged as {archetype}. analysis detected a cluster of high-risk terminology ({word_str}) typically deployed to facilitate {impact}.",
+                
+                # Template B: The Technical Breakdown
+                f"**Security Analysis**: Heuristic scanning identified {archetype} vectors within the subject {subject_display}. The linguistic density of terms such as {word_str} deviates significantly from standard business communication protocols.",
+                
+                # Template C: The Tactical Observation
+                f"**Behavioral Report**: The sender ({sender_display}) is employing {archetype} tactics. By utilizing triggers like {word_str} in context of {subject_display}, the message attempts to bypass critical thinking to achieve {impact}.",
+                
+                # Template D: The Forensics Summary
+                f"**Forensic Insight**: This message fits the profile of {archetype}. Key signatures isolated include {word_str}, which correlate with known campaigns aiming for {impact}."
+            ]
+            
+            # Select a template
+            explanation = random.choice(templates)
+            return explanation
 
-        return explanation
+        except Exception as e:
+            return f"Automated analysis interrupted. Error code: {str(e)}. Default action: Block and Quarantine."
+
+def generate_ai_phishing_explanation(sender, subject, body, phishing_words, confidence):
+    """
+    Uses Gemini AI to generate professional, educational phishing explanations.
+    Falls back to CybersecurityAgent if API fails.
+    """
+    try:
+        from google import genai
+        from config import config
+        
+        # Configure Gemini
+        client = genai.Client(api_key=config.GEMINI_API_KEY)
+        
+        # Extract key risk words for context
+        risk_words_str = ", ".join([f"'{w['word']}'" for w in phishing_words[:5]]) if phishing_words else "various suspicious patterns"
+        
+        # Craft expert prompt
+        prompt = f"""You are a cybersecurity expert explaining why an email is phishing to a non-technical user.
+
+**Email Details:**
+From: {sender}
+Subject: {subject}
+Body snippet: {body[:300]}...
+Detected risk indicators: {risk_words_str}
+Confidence: {int(confidence * 100)}%
+
+**Instructions:**
+Write a clear, professional 2-3 sentence explanation that:
+1. Identifies the specific phishing tactic being used (e.g., urgency, fake links, impersonation)
+2. Points out 1-2 concrete red flags in this email
+3. Ends with brief, actionable safety advice
+
+Use a professional but friendly tone. Do NOT use bullet points or formatting - just natural paragraphs.
+Keep it under 80 words total.
+
+Generate the explanation now:"""
+
+        # Call Gemini API
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        
+        explanation = response.text.strip()
+        
+        # Validate response
+        if explanation and len(explanation) > 30:
+            return explanation
+        else:
+            raise ValueError("AI response too short")
+            
+    except Exception as e:
+        # Fallback to CybersecurityAgent
+        logger.warning(f"AI explanation failed: {e}. Using fallback.")
+        return CybersecurityAgent.analyze_and_explain(sender, subject, phishing_words)
+
 
 def ml_predict(text, sender="", subject=""):
     """
@@ -143,14 +211,16 @@ def ml_predict(text, sender="", subject=""):
                 logger.warning(f"LIME explanation error: {e}")
                 explanation_data = {}
         
-        # Determine reason using Cybersecurity Agent
+        # Determine reason using AI-powered explanation
         reason = ""
         if prediction == 1:
-            # DYNAMIC AGENT EXPLANATION
-            reason = CybersecurityAgent.analyze_and_explain(
+            # AI-POWERED EXPLANATION (with fallback to CybersecurityAgent)
+            reason = generate_ai_phishing_explanation(
                 sender, 
-                subject, 
-                explanation_data.get('phishing_words', [])
+                subject,
+                text,  # Full email body for context
+                explanation_data.get('phishing_words', []),
+                pred_confidence
             )
         else:
             reason = "Automated heuristics and linguistic analysis indicate this message maintains a high integrity score. No malicious payloads or social engineering patterns identified."
@@ -217,3 +287,84 @@ def get_explanation_html(explanation_data):
     html += '</div>'
     
     return html
+
+class ReplyAgent:
+    """
+    LLM-powered email reply agent using Google Gemini API.
+    Generates intelligent, context-aware, professional responses.
+    """
+    
+    @classmethod
+    def generate_draft(cls, sender, subject, body):
+        """
+        Generates a professional email reply using Gemini API.
+        Falls back to heuristic templates on error.
+        """
+        try:
+            from google import genai
+            from config import config
+            
+            # Configure Gemini with new SDK
+            client = genai.Client(api_key=config.GEMINI_API_KEY)
+            
+            # Extract sender name
+            sender_name = sender.split("<")[0].strip().replace('"', '') or "Colleague"
+            
+            # Craft intelligent prompt
+            prompt = f"""You are a professional email assistant helping draft a reply.
+
+**Incoming Email:**
+From: {sender}
+Subject: {subject}
+Body: {body}
+
+**Instructions:**
+1. Write a professional, concise reply (under 150 words)
+2. Acknowledge the key points from their email
+3. Use a warm but professional tone
+4. If they asked a question, provide a thoughtful response or indicate you'll follow up
+5. If it's a meeting request, express interest and ask for timing
+6. If it's urgent, acknowledge the urgency
+7. Sign off as "[Your Name]" (the user will replace this)
+8. Do NOT include a subject line, only the email body
+
+Generate the reply now:"""
+
+            # Call Gemini API with new SDK
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            
+            draft = response.text.strip()
+            
+            # Validate response
+            if not draft or len(draft) < 20:
+                raise ValueError("Generated response too short")
+            
+            return draft
+            
+        except Exception as e:
+            # Fallback to heuristic templates
+            import logging
+            logging.error(f"Gemini API error: {e}. Falling back to templates.")
+            return cls._fallback_template(sender, subject, body)
+    
+    @classmethod
+    def _fallback_template(cls, sender, subject, body):
+        """Fallback heuristic templates when API fails."""
+        sender_name = sender.split("<")[0].strip().replace('"', '') or "there"
+        text = (subject + " " + body).lower()
+        
+        # Simple intent detection
+        if any(x in text for x in ['meeting', 'schedule', 'call', 'zoom']):
+            return f"Hi {sender_name},\n\nThank you for reaching out. I'd be happy to connect. Please let me know what times work best for you this week.\n\nBest regards,\n[Your Name]"
+        
+        elif any(x in text for x in ['urgent', 'asap', 'immediate']):
+            return f"Hello {sender_name},\n\nI have received your urgent message and am looking into this immediately. I will get back to you as soon as possible.\n\nBest,\n[Your Name]"
+        
+        elif any(x in text for x in ['offer', 'position', 'role', 'hiring']):
+            return f"Dear {sender_name},\n\nThank you for considering me for this opportunity. I am very interested and would love to discuss the role further. Please let me know the next steps.\n\nSincerely,\n[Your Name]"
+        
+        else:
+            return f"Hi {sender_name},\n\nThank you for your email. I have reviewed your message and will get back to you shortly with a detailed response.\n\nBest regards,\n[Your Name]"

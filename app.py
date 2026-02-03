@@ -8,7 +8,7 @@ from datetime import datetime
 from auth.google_oauth import get_flow
 from googleapiclient.errors import HttpError
 from google.oauth2.credentials import Credentials
-from security.ml_detector import ml_predict, get_explanation_html
+from security.ml_detector import ml_predict, get_explanation_html, ReplyAgent
 from security.auto_del import move_to_trash, restore_from_trash, delete_permanently
 from database.db import init_db, reset_scan_data
 from database.logs import log_email
@@ -298,64 +298,105 @@ def inbox_content():
         results = service.users().messages().list(
             userId="me",
             labelIds=["INBOX"],
-            maxResults=25
+            maxResults=200
         ).execute()
 
-        emails = []
-        for m in results.get("messages", []):
-            msg = service.users().messages().get(
-                userId="me",
-                id=m["id"],
-                format="metadata",
-                metadataHeaders=["From", "Subject", "Date"]
-            ).execute()
+        messages = results.get("messages", [])
+        if not messages:
+             return render_template("inbox.html", emails=[])
 
-            headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+        # 1. Batch Request for Gmail Details
+        message_details = {}
+
+        def batch_callback(request_id, response, exception):
+            if exception:
+                logger.error(f"Error for msg {request_id}: {exception}")
+            else:
+                message_details[request_id] = response
+
+        # Gmail Batch API limit is 100. We fetch in chunks of 50 to be safe.
+        chunk_size = 50
+        for i in range(0, len(messages), chunk_size):
+            chunk = messages[i:i + chunk_size]
+            batch = service.new_batch_http_request()
             
-            # Check DB for phishing status
-            is_phishing = False
-            confidence = 0
-            reason = ""
-            explanation_html = ""
+            for m in chunk:
+                batch.add(
+                    service.users().messages().get(
+                        userId="me",
+                        id=m["id"],
+                        format="metadata",
+                        metadataHeaders=["From", "Subject", "Date"]
+                    ),
+                    callback=batch_callback,
+                    request_id=m["id"]
+                )
             
+            batch.execute()
+
+        # 2. Bulk DB Query
+        msg_ids = list(message_details.keys())
+        phishing_map = {}
+        
+        if msg_ids:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT phishing, confidence, reason, explanation FROM email_logs WHERE message_id = ?",
-                    (m["id"],)
-                )
-                row = cursor.fetchone()
-                if row:
-                    is_phishing = bool(row[0])
-                    confidence = row[1] or 0
-                    reason = row[2] or ""
-                    explanation = row[3]
+                placeholders = ",".join("?" * len(msg_ids))
+                query = f"SELECT message_id, phishing, confidence, reason, explanation FROM email_logs WHERE message_id IN ({placeholders})"
+                cursor.execute(query, msg_ids)
+                rows = cursor.fetchall()
+                
+                for row in rows:
+                    explanation_html = ""
+                    explanation = row[4]
                     if explanation:
                         try:
                             exp_data = json.loads(explanation) if isinstance(explanation, str) else explanation
-                            if exp_data and (exp_data.get('phishing_words') or exp_data.get('safe_words')):
+                            if exp_data:
                                 explanation_html = get_explanation_html(exp_data)
-                        except:
-                            pass
-            
+                        except: pass
+                        
+                    phishing_map[row[0]] = {
+                        "is_phishing": bool(row[1]),
+                        "confidence": row[2] or 0,
+                        "reason": row[3] or "",
+                        "explanation_html": explanation_html
+                    }
+
+        # 3. Assemble
+        emails = []
+        for m_id, msg in message_details.items():
             # STRICT FILTER: If identified as phishing, do not show in Inbox
-            if is_phishing:
+            p_data = phishing_map.get(m_id, {})
+            if p_data.get("is_phishing"):
                 continue
 
+            headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+            
             emails.append({
-                "id": m["id"],
+                "id": m_id,
                 "sender": headers.get("From", ""),
                 "subject": headers.get("Subject", ""),
                 "body": msg.get("snippet", ""),
-                "is_phishing": is_phishing,
-                "confidence": int(confidence * 100) if confidence else None,
-                "reason": reason,
-                "explanation_html": explanation_html,
-                "scanned": row is not None,
-                "date": headers.get("Date", "").split("+")[0].strip() # Clean date
+                "is_phishing": False, # Filtered out above
+                "confidence": int(p_data.get("confidence", 0) * 100) if p_data.get("confidence") else None,
+                "reason": p_data.get("reason", ""),
+                "explanation_html": p_data.get("explanation_html", ""),
+                "scanned": m_id in phishing_map,
+                "date": headers.get("Date", "").split("+")[0].strip()
             })
 
-        return render_template("inbox.html", emails=emails)
+        # Sort by Date (descending) - Gmail usually returns in order but batch might shuffle
+        # We rely on Gmail's list order which is chronological, but since we iterate message_details text dict, 
+        # we should respect the original 'messages' list order
+        ordered_emails = []
+        email_map = {e["id"]: e for e in emails}
+        
+        for m in messages:
+            if m["id"] in email_map:
+                ordered_emails.append(email_map[m["id"]])
+
+        return render_template("inbox.html", emails=ordered_emails)
 
     except Exception as e:
         logger.error(e)
@@ -543,7 +584,7 @@ def all_mail():
         # 1. List messages (metadata only)
         results = service.users().messages().list(
             userId="me",
-            maxResults=50,
+            maxResults=200,
             pageToken=page_token
         ).execute()
 
@@ -690,7 +731,7 @@ def starred_mail():
         results = service.users().messages().list(
             userId="me",
             q="is:starred",
-            maxResults=50
+            maxResults=200
         ).execute()
 
         emails = []
@@ -764,7 +805,7 @@ def sent_mail():
         results = service.users().messages().list(
             userId="me",
             q="is:sent",
-            maxResults=50
+            maxResults=200
         ).execute()
 
         emails = []
@@ -838,7 +879,7 @@ def trash():
         results = service.users().messages().list(
             userId="me",
             labelIds=["TRASH"],
-            maxResults=50
+            maxResults=200
         ).execute()
 
         emails = []
@@ -990,8 +1031,7 @@ def phishing_logs():
                 SELECT sender, subject, body, phishing, confidence, reason, action, explanation, created_at, message_id
                 FROM email_logs 
                 WHERE phishing = 1 
-                ORDER BY created_at DESC 
-                LIMIT 50
+                ORDER BY created_at DESC
             """)
             rows = cursor.fetchall()
             
@@ -1024,6 +1064,24 @@ def phishing_logs():
         return handle_error(e, 500, False)
 
 # ---------------- Compose ----------------
+
+@app.route("/api/generate-reply", methods=["POST"])
+@require_auth
+def generate_reply():
+    """
+    Generates a smart reply draft using the ReplyAgent.
+    """
+    try:
+        data = request.json
+        sender = data.get("sender", "")
+        subject = data.get("subject", "")
+        body = data.get("body", "")
+        
+        draft = ReplyAgent.generate_draft(sender, subject, body)
+        return jsonify({"draft": draft})
+    except Exception as e:
+        logger.error(f"Smart Reply error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/compose")
 @require_auth

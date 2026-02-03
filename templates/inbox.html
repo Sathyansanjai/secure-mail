@@ -241,12 +241,57 @@
                 <div style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">${data.date || ''}</div>
                 <hr>
                 <div style="max-height:60vh; overflow-y:auto; margin-top:10px;">${data.body || "No content."}</div>
+                <div style="margin-top:20px; text-align:right;">
+                    <button id="ai-reply-btn" style="background:#4a90e2; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;" title="Generate AI Draft">
+                        ✨ Smart Reply
+                    </button>
+                </div>
             </div>
         `;
         document.body.appendChild(modal);
 
         modal.querySelector(".modal-overlay").onclick = () => modal.remove();
         modal.querySelector(".modal-close").onclick = () => modal.remove();
+
+        // AI Reply Handler
+        const replyBtn = modal.querySelector("#ai-reply-btn");
+        replyBtn.onclick = () => {
+            replyBtn.disabled = true;
+            replyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+
+            fetch("/api/generate-reply", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    sender: data.sender,
+                    subject: data.subject,
+                    body: data.body
+                })
+            })
+                .then(res => res.json())
+                .then(resData => {
+                    if (resData.draft) {
+                        // Store draft to populate compose window
+                        localStorage.setItem("smart_reply_draft", resData.draft);
+                        localStorage.setItem("smart_reply_to", data.sender);
+                        localStorage.setItem("smart_reply_subject", "Re: " + (data.subject || ""));
+
+                        // Redirect to compose
+                        modal.remove();
+                        document.querySelector(".compose-btn").click();
+                    } else {
+                        alert("Could not generate reply.");
+                        replyBtn.disabled = false;
+                        replyBtn.textContent = "✨ Smart Reply";
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("AI Error");
+                    replyBtn.disabled = false;
+                    replyBtn.textContent = "✨ Smart Reply";
+                });
+        };
     }
 
     function removeCard(emailId) {
